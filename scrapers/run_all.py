@@ -94,6 +94,7 @@ SCRAPERS = [
     # 광주광역시 (2 of 3 — 도시건설본부 새소식 JS-loaded)
     "scrapers.gwangju.gmcc",
     "scrapers.gwangju.gwangju_si",
+    "scrapers.gwangju.gwangju_si_build",
     # 대전광역시 — finishing the metro (8 of 8)
     "scrapers.daejeon.daejeon_kukto",
     "scrapers.daejeon.nonsan_kukto",
