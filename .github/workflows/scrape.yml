@@ -1,0 +1,103 @@
+name: Scrape & sync notices
+
+on:
+  # Manual trigger only — flip cron on later once the source list is stable.
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Run only modules whose dotted path contains this substring (leave blank for all)'
+        required: false
+        default: ''
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: scrapers/requirements.txt
+
+      - name: Install scraper deps
+        run: pip install -r scrapers/requirements.txt
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('scrapers/requirements.txt') }}
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Verify secrets present
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SECRET_KEY" ]; then
+            echo "::error::SUPABASE_URL and/or SUPABASE_SECRET_KEY repo secret is not set."
+            echo "::error::Add both at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            exit 1
+          fi
+
+      - name: Run scrapers and upsert to Supabase
+        id: scrape
+        continue-on-error: true
+        run: |
+          set +e
+          ONLY_FLAG=""
+          if [ -n "${{ inputs.only }}" ]; then
+            ONLY_FLAG="--only=${{ inputs.only }}"
+          fi
+          python -m scrapers.run_all --supabase $ONLY_FLAG 2>&1 | tee scrape.log
+          echo "scraper_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Build run summary
+        if: always()
+        run: |
+          {
+            echo "## Scrape run summary"
+            echo ""
+            if [ "${{ steps.scrape.outputs.scraper_exit }}" = "0" ]; then
+              echo "All scrapers succeeded."
+            else
+              echo "Some scrapers failed. Successful sites still wrote to Supabase. See the failures list below."
+            fi
+            echo ""
+            echo "### Counts"
+            echo '```'
+            grep -E '^Total notices:|^Failures:' scrape.log || echo '(no totals line)'
+            echo '```'
+            echo ""
+            echo "### Per-site results"
+            echo '```'
+            awk '
+              /^── / { region=$0; next }
+              /^   → [0-9]+ notices/ { print region; print "  " $0; next }
+              /^   ✗ / { print region; print "  " $0; next }
+            ' scrape.log | tail -300
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload full log as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-log-${{ github.run_id }}
+          path: scrape.log
+          retention-days: 14
