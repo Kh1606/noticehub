@@ -14,15 +14,25 @@ from typing import Callable
 from scrapers.base import Notice, SourceMeta, soup, clean, parse_date
 
 
-def scrape_jqgrid(
+def scrape_jqgrid(source: SourceMeta, **opts) -> list[Notice]:
+    """Render + extract. Retries 2x on empty result to absorb CI flake."""
+    import time as _t
+    for attempt in range(3):
+        notices = _scrape_jqgrid_once(source, **opts)
+        if notices:
+            return notices
+        if attempt < 2:
+            _t.sleep(2 * (attempt + 1))
+    return []
+
+
+def _scrape_jqgrid_once(
     source: SourceMeta,
     *,
     title_col: int,
     date_col: int,
     uid_col: int,
 ) -> list[Notice]:
-    """Render the page with Playwright, extract every tr.jqgrow row, and
-    emit one Notice per row using (title_col, date_col, uid_col)."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:

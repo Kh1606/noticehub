@@ -13,7 +13,20 @@ from scrapers.base import Notice, SourceMeta
 from scrapers._helpers.simple_table import extract_from_html
 
 
-def scrape_playwright_table(
+def scrape_playwright_table(source: SourceMeta, **opts) -> list[Notice]:
+    """Render with Playwright + extract via simple_table.extract_from_html.
+    Retries 2x on empty result to absorb CI flake."""
+    import time as _t
+    for attempt in range(3):
+        notices = _scrape_playwright_table_once(source, **opts)
+        if notices:
+            return notices
+        if attempt < 2:
+            _t.sleep(2 * (attempt + 1))
+    return []
+
+
+def _scrape_playwright_table_once(
     source: SourceMeta,
     *,
     title_col: int = 1,
