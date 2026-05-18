@@ -22,6 +22,7 @@ except ImportError:
     pass
 
 from scrapers.base import StdoutSink, JsonFileSink, SupabaseSink, polite_sleep
+from scrapers._v2_allowlist import V2_ALLOWLIST, norm as v2_norm
 
 # Register scrapers here. Each entry is the dotted module path; the module
 # must expose `SOURCE: SourceMeta` and `scrape() -> list[Notice]`.
@@ -132,6 +133,8 @@ def main():
         supabase_sink = SupabaseSink(url, key)
 
     total = 0
+    skipped_non_v2 = 0
+    dropped_non_v2 = 0
     failures: list[tuple[str, str]] = []
 
     for mod_path in SCRAPERS:
@@ -149,10 +152,16 @@ def main():
         entries = mod.SCRAPERS if hasattr(mod, "SCRAPERS") else [(mod.SOURCE, mod.scrape)]
 
         for src, scrape_fn in entries:
+            if v2_norm(src.source_url) not in V2_ALLOWLIST:
+                skipped_non_v2 += 1
+                continue
             print(f"\n── {src.region} / {src.sub_entity} / {src.source_page}")
             print(f"   {src.source_url}")
             try:
                 notices = scrape_fn()
+                before = len(notices)
+                notices = [n for n in notices if v2_norm(n.source_url) in V2_ALLOWLIST]
+                dropped_non_v2 += before - len(notices)
                 count = stdout_sink.write(notices)
                 if json_sink:
                     json_sink.write(notices)
@@ -170,6 +179,8 @@ def main():
         print(f"\nWrote snapshot → {args.out}")
 
     print(f"\nTotal notices: {total}")
+    print(f"Skipped (not in v2 allowlist): {skipped_non_v2} entries")
+    print(f"Dropped from results (non-v2 source_url): {dropped_non_v2} notices")
     if failures:
         print(f"Failures: {len(failures)}")
         for path, err in failures:
