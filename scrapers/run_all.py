@@ -65,6 +65,7 @@ SCRAPERS = [
     "scrapers.gyeonggi.anseong_si",
     "scrapers.gyeonggi.ansan_si",
     "scrapers.gyeonggi.uiwang_si",
+    "scrapers.gyeonggi.seongnam_si",
     # 전라북도
     "scrapers.jeonbuk.jeonbuk_batch",
     "scrapers.jeonbuk.jeonbuk_list_batch",
@@ -97,6 +98,7 @@ SCRAPERS = [
     "scrapers.incheon.jonggeon",
     "scrapers.incheon.incheon_si_sap",
     "scrapers.incheon.ih_bid",
+    "scrapers.incheon.ih_notice",
     # 광주광역시 (2 of 3 — 도시건설본부 새소식 JS-loaded)
     "scrapers.gwangju.gmcc",
     "scrapers.gwangju.gwangju_si",
