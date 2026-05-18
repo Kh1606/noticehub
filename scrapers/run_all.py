@@ -24,6 +24,27 @@ except ImportError:
 from scrapers.base import StdoutSink, JsonFileSink, SupabaseSink, polite_sleep
 from scrapers._v2_allowlist import V2_ALLOWLIST, norm as v2_norm
 
+
+def _build_v2_meta() -> dict[str, tuple[str, str, str]]:
+    """Map normalized v2 url -> (region, sub_entity, source_page).
+    Reads src/data/regions.json so v2's xlsx-derived labels are the
+    single source of truth, overriding any divergent labels in the
+    individual scraper SourceMeta definitions."""
+    import json
+    from pathlib import Path
+    p = Path(__file__).resolve().parent.parent / "src" / "data" / "regions.json"
+    out: dict[str, tuple[str, str, str]] = {}
+    for r in json.loads(p.read_text(encoding="utf-8")):
+        for sub in r.get("subEntities", []):
+            for s in sub.get("sources", []):
+                u = s.get("url")
+                if u:
+                    out[v2_norm(u)] = (r["region"], sub["name"], s.get("page", ""))
+    return out
+
+
+V2_META = _build_v2_meta()
+
 # Register scrapers here. Each entry is the dotted module path; the module
 # must expose `SOURCE: SourceMeta` and `scrape() -> list[Notice]`.
 SCRAPERS = [
@@ -135,6 +156,7 @@ def main():
     total = 0
     skipped_non_v2 = 0
     dropped_non_v2 = 0
+    patched_meta = 0
     failures: list[tuple[str, str]] = []
 
     for mod_path in SCRAPERS:
@@ -162,6 +184,12 @@ def main():
                 before = len(notices)
                 notices = [n for n in notices if v2_norm(n.source_url) in V2_ALLOWLIST]
                 dropped_non_v2 += before - len(notices)
+                # Reconcile metadata to v2's regions.json labels so UI queries match.
+                for n in notices:
+                    meta = V2_META.get(v2_norm(n.source_url))
+                    if meta and (n.region, n.sub_entity, n.source_page) != meta:
+                        n.region, n.sub_entity, n.source_page = meta
+                        patched_meta += 1
                 count = stdout_sink.write(notices)
                 if json_sink:
                     json_sink.write(notices)
@@ -181,6 +209,7 @@ def main():
     print(f"\nTotal notices: {total}")
     print(f"Skipped (not in v2 allowlist): {skipped_non_v2} entries")
     print(f"Dropped from results (non-v2 source_url): {dropped_non_v2} notices")
+    print(f"Patched metadata to v2 labels: {patched_meta} notices")
     if failures:
         print(f"Failures: {len(failures)}")
         for path, err in failures:
