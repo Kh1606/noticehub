@@ -84,6 +84,7 @@ SCRAPERS = [
     "scrapers.busan.busan_batch",
     # 대구광역시 (1 of 5 — 대구시청 JS-loaded; 김천/상주시청 404; 대구지방환경청 blocked)
     "scrapers.daegu.daegu_dosi",
+    "scrapers.daegu.gimcheon_si",
     # 인천광역시 (2 of 3 — 인천도시공사 returns HTTP 500)
     "scrapers.incheon.incheon_si",
     "scrapers.incheon.jonggeon",
@@ -106,6 +107,7 @@ SCRAPERS = [
     # 세종특별시 (2 of 3 — 세종도시교통공사 has no tables, JS-loaded)
     "scrapers.sejong.sejong_si_notice",
     "scrapers.sejong.sejong_si_gosi",
+    "scrapers.sejong.sejong_si_pn_c1",
     "scrapers.sejong.sejong_batch",
     # 경상북도 (9 of 38 — most are JS-rendered portal/saeol or open_content)
     "scrapers.gyeongsangbuk.gyeongbuk_batch",
