@@ -52,6 +52,7 @@ SCRAPERS = [
     "scrapers.chungcheongnam.asan",
     "scrapers.chungcheongnam.chungnam_batch",
     "scrapers.chungcheongnam.chungnam_eminwon",
+    "scrapers.chungcheongnam.chungnam_sap",
     # 충청북도
     "scrapers.chungcheongbuk.chungbuk_batch",
     "scrapers.chungcheongbuk.chungbuk_web_batch",
@@ -86,6 +87,7 @@ SCRAPERS = [
     # 인천광역시 (2 of 3 — 인천도시공사 returns HTTP 500)
     "scrapers.incheon.incheon_si",
     "scrapers.incheon.jonggeon",
+    "scrapers.incheon.incheon_si_sap",
     # 광주광역시 (2 of 3 — 도시건설본부 새소식 JS-loaded)
     "scrapers.gwangju.gmcc",
     "scrapers.gwangju.gwangju_si",
