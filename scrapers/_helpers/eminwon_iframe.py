@@ -107,7 +107,18 @@ def _extract_rows(html: str, source: SourceMeta, eminwon_origin: str) -> list[No
 
 def scrape_eminwon_iframe(source: SourceMeta) -> list[Notice]:
     """Open parent, find eminwon iframe, navigate it to the parameterized
-    list URL, parse the rendered rows."""
+    list URL, parse the rendered rows. Retries 2x on empty result."""
+    import time as _t
+    for attempt in range(3):
+        notices = _scrape_eminwon_iframe_once(source)
+        if notices:
+            return notices
+        if attempt < 2:
+            _t.sleep(2 * (attempt + 1))
+    return []
+
+
+def _scrape_eminwon_iframe_once(source: SourceMeta) -> list[Notice]:
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:

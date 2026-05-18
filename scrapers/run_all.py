@@ -67,6 +67,8 @@ SCRAPERS = [
     "scrapers.gyeonggi.uiwang_si",
     "scrapers.gyeonggi.seongnam_si",
     "scrapers.gyeonggi.goyang_si",
+    "scrapers.gyeonggi.newtech_gg",
+    "scrapers.gyeonggi.calspia",
     # 전라북도
     "scrapers.jeonbuk.jeonbuk_batch",
     "scrapers.jeonbuk.jeonbuk_list_batch",
@@ -94,6 +96,7 @@ SCRAPERS = [
     "scrapers.daegu.daegu_dosi",
     "scrapers.daegu.gimcheon_si",
     "scrapers.daegu.singisul_daegu",
+    "scrapers.daegu.daegu_si",
     # 인천광역시 (2 of 3 — 인천도시공사 returns HTTP 500)
     "scrapers.incheon.incheon_si",
     "scrapers.incheon.jonggeon",

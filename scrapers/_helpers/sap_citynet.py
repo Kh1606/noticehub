@@ -95,7 +95,18 @@ SAP_PATH_HINT = "SAPGosiBizProcess.do"
 def scrape_sap_citynet(source: SourceMeta) -> list[Notice]:
     """Loads the source URL in Playwright, finds the SAPGosiBizProcess frame
     (the page itself when direct, or an iframe when parent-embedded), and
-    extracts rows."""
+    extracts rows. Retries 2x on empty result."""
+    import time as _t
+    for attempt in range(3):
+        notices = _scrape_sap_citynet_once(source)
+        if notices:
+            return notices
+        if attempt < 2:
+            _t.sleep(2 * (attempt + 1))
+    return []
+
+
+def _scrape_sap_citynet_once(source: SourceMeta) -> list[Notice]:
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
