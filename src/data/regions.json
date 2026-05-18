@@ -258,7 +258,7 @@
           },
           {
             "page": "입찰공고",
-            "url": "https://www.ih.co.kr/open_content/main/customer/notification/bid.jsp",
+            "url": "https://www.ih.co.kr/main/sale_lease/board/shopping_notice.jsp",
             "sheet": "주요관청",
             "crawlable": false
           }
@@ -477,7 +477,7 @@
         "sources": [
           {
             "page": "고시 공고",
-            "url": "https://www.ansan.go.kr/www/common/cntnts/selectContents.do?cntnts_id=C0001209",
+            "url": "https://www.ansan.go.kr/www/common/bbs/selectPageListBbs.do?bbs_code=WWW13",
             "sheet": "주요관청",
             "crawlable": false
           }
@@ -499,7 +499,7 @@
         "sources": [
           {
             "page": "고시 공고",
-            "url": "https://www.pyeongtaek.go.kr/pyeongtaek/saeol/gosiList.do?seCode=01&mId=0401020000",
+            "url": "https://www.pyeongtaek.go.kr/pyeongtaek/saeol/gosi/list.do?seCode=01&mid=0401020000",
             "sheet": "주요관청",
             "crawlable": false
           }
@@ -554,7 +554,7 @@
         "sources": [
           {
             "page": "고시 공고",
-            "url": "https://www.anseong.go.kr/portal/saeol/gosiList.do?mId=0401040000",
+            "url": "https://www.anseong.go.kr/portal/saeol/gosiList.do?mId=0501040000",
             "sheet": "주요관청",
             "crawlable": false
           }
@@ -872,7 +872,7 @@
         "sources": [
           {
             "page": "공지사항",
-            "url": "https://www.kwater.or.kr/wis/wq/index.do?w2xPath=/wis/ui/index.xml",
+            "url": "https://www.kwater.or.kr/news/sub01/noti01List.do?s_mid=105&brdId=KO27",
             "sheet": "주요관청",
             "crawlable": false
           }

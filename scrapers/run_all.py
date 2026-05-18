@@ -61,6 +61,10 @@ SCRAPERS = [
     "scrapers.gyeonggi.gyeonggi_batch",
     "scrapers.gyeonggi.gyeonggi_pw_batch",
     "scrapers.gyeonggi.hscity",
+    "scrapers.gyeonggi.pyeongtaek_si",
+    "scrapers.gyeonggi.anseong_si",
+    "scrapers.gyeonggi.ansan_si",
+    "scrapers.gyeonggi.uiwang_si",
     # 전라북도
     "scrapers.jeonbuk.jeonbuk_batch",
     "scrapers.jeonbuk.jeonbuk_list_batch",
@@ -92,6 +96,7 @@ SCRAPERS = [
     "scrapers.incheon.incheon_si",
     "scrapers.incheon.jonggeon",
     "scrapers.incheon.incheon_si_sap",
+    "scrapers.incheon.ih_bid",
     # 광주광역시 (2 of 3 — 도시건설본부 새소식 JS-loaded)
     "scrapers.gwangju.gmcc",
     "scrapers.gwangju.gwangju_si",
@@ -124,6 +129,7 @@ SCRAPERS = [
     # 전국 공사/공단
     "scrapers.gongsa.gongsa_batch",
     "scrapers.gongsa.gongsa_web_batch",
+    "scrapers.gongsa.kwater_notice",
     # 제주도 (3 of 4 — 서귀포시청 returns empty initial HTML)
     "scrapers.jeju.jeju_do",
     "scrapers.jeju.jeju_si",
