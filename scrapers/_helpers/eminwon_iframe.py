@@ -65,17 +65,29 @@ def _pick_date(row) -> str | None:
     return None
 
 
+_SEARCH_DETAIL_RE = re.compile(r"searchDetail\(\s*'(\d+)'\s*\)", re.IGNORECASE)
+
+
 def _extract_rows(html: str, source: SourceMeta, eminwon_origin: str) -> list[Notice]:
     s = soup(html)
     detail_tmpl = eminwon_origin + DETAIL_PATH
     notices: list[Notice] = []
     seen: set[str] = set()
     for row in s.find_all("tr"):
-        a = row.find("a", onclick=re.compile(r"searchDetail\(\s*'(\d+)'"))
-        if not a:
-            continue
-        m = re.search(r"searchDetail\(\s*'(\d+)'\s*\)", a.get("onclick", ""))
-        if not m:
+        # Some sites put searchDetail in onclick (cheongju, asan);
+        # others put it in href="javaScript:searchDetail('ID')" (goyang).
+        a = None
+        m = None
+        for cand in row.find_all("a"):
+            for attr in ("onclick", "href"):
+                val = cand.get(attr, "") or ""
+                mm = _SEARCH_DETAIL_RE.search(val)
+                if mm:
+                    a, m = cand, mm
+                    break
+            if a:
+                break
+        if not a or not m:
             continue
         notice_id = m.group(1)
         detail_url = detail_tmpl + notice_id

@@ -66,6 +66,7 @@ SCRAPERS = [
     "scrapers.gyeonggi.ansan_si",
     "scrapers.gyeonggi.uiwang_si",
     "scrapers.gyeonggi.seongnam_si",
+    "scrapers.gyeonggi.goyang_si",
     # 전라북도
     "scrapers.jeonbuk.jeonbuk_batch",
     "scrapers.jeonbuk.jeonbuk_list_batch",
