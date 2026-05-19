@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { animated, useSpring } from '@react-spring/web'
 import { X, MapPin } from 'lucide-react'
 import regionsData from '../data/regions.json'
 import NoticeList from './NoticeList.jsx'
@@ -9,13 +8,16 @@ import NoticeList from './NoticeList.jsx'
  * card click or a KoreaMap region/sub click. Shows the region's sub-entity
  * picker on top and the selected sub-entity's notice list below.
  *
+ * Lives INLINE as a flex child of the main content area (NOT a fixed
+ * overlay) so it sits beside the inventory grid / map instead of covering
+ * them. The parent (App.jsx) controls whether the panel is rendered at
+ * all based on `selected`.
+ *
  * Closes on:
- *   - ESC key
- *   - click on backdrop (left of the panel)
+ *   - ESC key (handled here)
  *   - X button in the header
  */
 export default function RegionDetailPanel({
-  open,
   region,
   initialSub,
   onClose,
@@ -31,67 +33,36 @@ export default function RegionDetailPanel({
 
   // Re-sync internal sub selection whenever the trigger updates region or sub.
   useEffect(() => {
-    if (!open) return
     setSelectedSub(initialSub ?? subEntities?.[0]?.name ?? null)
-  }, [open, region, initialSub, subEntities])
+  }, [region, initialSub, subEntities])
 
   // ESC closes
   useEffect(() => {
-    if (!open) return
     const onKey = e => {
       if (e.key === 'Escape') onClose?.()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [onClose])
 
   const handlePick = name => {
     setSelectedSub(name)
     onSelectSub?.(name)
   }
 
-  const slide = useSpring({
-    transform: open ? 'translateX(0%)' : 'translateX(105%)',
-    config: { tension: 280, friction: 30 },
-  })
-  const dim = useSpring({
-    opacity: open ? 1 : 0,
-    config: { tension: 220, friction: 24 },
-  })
-
   return (
     <>
-      {/* Backdrop — click to close, fades in */}
-      <animated.div
-        onClick={onClose}
-        aria-hidden={!open}
+      {/* Panel — inline flex child, lives beside the main view */}
+      <aside
         style={{
-          ...dim,
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(13, 27, 110, 0.18)',
-          pointerEvents: open ? 'auto' : 'none',
-          zIndex: 40,
-        }}
-      />
-
-      {/* Panel — slides in from the right */}
-      <animated.aside
-        aria-hidden={!open}
-        style={{
-          ...slide,
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: 'min(460px, 94vw)',
+          width: 'min(460px, 100%)',
+          flexShrink: 0,
           background: 'var(--bg-card)',
           borderLeft: '1px solid var(--border)',
-          boxShadow: '-12px 0 32px rgba(13,27,110,0.18)',
           display: 'flex',
           flexDirection: 'column',
-          zIndex: 50,
-          pointerEvents: open ? 'auto' : 'none',
+          minHeight: 0,
+          overflow: 'hidden',
         }}
       >
         {/* Header */}
@@ -233,7 +204,7 @@ export default function RegionDetailPanel({
             )}
           </div>
         </section>
-      </animated.aside>
+      </aside>
     </>
   )
 }

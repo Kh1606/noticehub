@@ -15,12 +15,21 @@ const DEFAULT_CENTER = PROJECTION_CONFIG.center
 const ZOOM_IN = 3.5
 
 // Color used for provinces / sub-regions with zero notices.
-const INACTIVE_FILL = '#E5E7EB'
+// Warmer/darker gray than #E5E7EB so it doesn't blend into the
+// light-blue map background gradient.
+const INACTIVE_FILL = '#C8CDD5'
+
+// Color used for the sub-region the user has currently picked (synced
+// with the right-panel selection). Distinct from both blue + gray.
+const SELECTED_FILL = '#F97316'      // orange-500
+const SELECTED_STROKE = '#C2410C'    // orange-700
 
 /**
- * @param countsByRegion  { [regionName]: total }
- * @param countsBySub     { [regionName]: { [subName]: count } }
- * @param selectedRegionName  string | null (from App.selected.region)
+ * @param countsByRegion     { [regionName]: total }
+ * @param countsBySub        { [regionName]: { [subName]: count } }
+ * @param selectedRegionName string | null (from App.selected.region)
+ * @param selectedSubName    string | null (from App.selected.sub) — drives
+ *                           orange highlight on the picked sub-region
  * @param onPickRegion(regionName)
  * @param onPickSub(regionName, subName)
  */
@@ -28,6 +37,7 @@ export default function KoreaMap({
   countsByRegion,
   countsBySub,
   selectedRegionName,
+  selectedSubName,
   onPickRegion,
   onPickSub,
 }) {
@@ -133,14 +143,11 @@ export default function KoreaMap({
 
   const handleMunicipalityClick = (geo) => {
     if (!selectedRegionName || !subLookup) return
-    const muniName = geo.properties.name
-    const subName = subLookup.match(muniName)
-    if (subName) {
-      onPickSub?.(selectedRegionName, subName)
-    } else {
-      // No matching v2 sub — keep the region selected, no-op on sub.
-      onPickRegion?.(selectedRegionName)
-    }
+    const subName = subLookup.match(geo.properties.name)
+    // Only react when the click maps to an actual v2 sub-entity. Clicks on
+    // inactive (gray) sub-regions do nothing — the user can still click
+    // back to province level via "전국 보기".
+    if (subName) onPickSub?.(selectedRegionName, subName)
   }
 
   const handleBack = () => {
@@ -231,6 +238,7 @@ export default function KoreaMap({
               parentCode={selectedProvince.code}
               subLookup={subLookup}
               subColorScale={subColorScale}
+              selectedSubName={selectedSubName}
               onClick={handleMunicipalityClick}
               setHover={setHover}
             />
@@ -314,7 +322,7 @@ export default function KoreaMap({
   )
 }
 
-function MunicipalityLayer({ topo, parentCode, subLookup, subColorScale, onClick, setHover }) {
+function MunicipalityLayer({ topo, parentCode, subLookup, subColorScale, selectedSubName, onClick, setHover }) {
   const filtered = useMemo(() => {
     const key = Object.keys(topo.objects)[0]
     const obj = topo.objects[key]
@@ -345,6 +353,10 @@ function MunicipalityLayer({ topo, parentCode, subLookup, subColorScale, onClick
           const muniName = geo.properties.name
           const matchedSub = subLookup?.match(muniName) ?? null
           const count = matchedSub ? (subLookup.counts[matchedSub] ?? 0) : 0
+          const isSelected = matchedSub && matchedSub === selectedSubName
+          const baseFill = isSelected
+            ? SELECTED_FILL
+            : count > 0 ? subColorScale(count) : INACTIVE_FILL
           return (
             <Geography
               key={geo.rsmKey}
@@ -360,19 +372,19 @@ function MunicipalityLayer({ topo, parentCode, subLookup, subColorScale, onClick
               onMouseLeave={() => setHover(null)}
               style={{
                 default: {
-                  fill: count > 0 ? subColorScale(count) : INACTIVE_FILL,
+                  fill: baseFill,
                   fillOpacity: shown ? 1 : 0,
-                  stroke: '#FFFFFF',
-                  strokeWidth: 0.4,
+                  stroke: isSelected ? SELECTED_STROKE : '#FFFFFF',
+                  strokeWidth: isSelected ? 1.4 : 0.4,
                   outline: 'none',
-                  transition: `fill-opacity 0.4s ease ${i * 8}ms, fill 0.25s ease`,
+                  transition: `fill-opacity 0.4s ease ${i * 8}ms, fill 0.25s ease, stroke 0.15s`,
                   cursor: count > 0 ? 'pointer' : 'default',
                 },
                 hover: {
-                  fill: count > 0 ? 'var(--primary-mid)' : '#CFD3DA',
+                  fill: isSelected ? SELECTED_FILL : (count > 0 ? 'var(--primary-mid)' : '#9CA3AF'),
                   fillOpacity: 1,
-                  stroke: '#FFFFFF',
-                  strokeWidth: 0.7,
+                  stroke: isSelected ? SELECTED_STROKE : '#FFFFFF',
+                  strokeWidth: isSelected ? 1.4 : 0.7,
                   outline: 'none',
                   cursor: count > 0 ? 'pointer' : 'default',
                 },
@@ -427,9 +439,9 @@ function subVariants(name) {
   // Strip city prefix: 청주시-상당구 -> 상당구
   const m = norm.match(/^([가-힣]+시)-?([가-힣]+(?:구|군))$/)
   if (m) v.add(m[2])
-  // Strip 시청/도청/구청/군청/공사/공단 suffix:
-  //   광주시청 -> 광주시 / 광주도청 -> 광주도 / 부산도시공사 -> 부산도시
-  v.add(norm.replace(/(시청|도청|구청|군청)$/u, '시'))
+  // Strip 시청/도청 suffix only.
+  // (Older code also tried `(시청|도청|구청|군청)$ -> 시` which
+  // incorrectly produced 경기시 from 경기도청 — removed.)
   v.add(norm.replace(/시청$/u, '시'))
   v.add(norm.replace(/도청$/u, '도'))
   return Array.from(v).filter(Boolean)
@@ -439,11 +451,13 @@ function muniVariants(name) {
   const v = new Set()
   const norm = name.trim()
   v.add(norm)
-  // Try with hyphen inserted between 시 and district: 청주시상당구 -> 청주시-상당구
+  // For TopoJSON city-district names like 청주시상당구 / 용인시수지구 /
+  // 수원시영통구 (no separator between city and district):
   const m = norm.match(/^([가-힣]+시)([가-힣]+(?:구|군))$/)
   if (m) {
-    v.add(`${m[1]}-${m[2]}`)
-    v.add(m[2]) // just the district
+    v.add(`${m[1]}-${m[2]}`) // hyphenated form for v2 match
+    v.add(m[2])              // bare district name
+    v.add(m[1])              // PARENT CITY — so 용인시수지구 also matches 용인시청 (v2)
   }
   return Array.from(v).filter(Boolean)
 }

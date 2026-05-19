@@ -111,6 +111,7 @@ export default function MapView({ selected, onPickRegion, onPickSub }) {
           countsByRegion={countsByRegion}
           countsBySub={countsBySub}
           selectedRegionName={selected?.region ?? null}
+          selectedSubName={selected?.sub ?? null}
           onPickRegion={onPickRegion}
           onPickSub={onPickSub}
         />
