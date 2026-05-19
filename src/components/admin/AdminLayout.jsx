@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { NavLink, Outlet, Link } from 'react-router-dom'
-import { LogOut, Shield, Database, History, Home, AlertTriangle } from 'lucide-react'
+import { LogOut, Shield, Database, History, Home, AlertTriangle, Activity } from 'lucide-react'
 import { useAuth } from '../../lib/auth.jsx'
 import { supabase } from '../../lib/supabase.js'
 import ScrapeErrorAlerts from './ScrapeErrorAlerts.jsx'
@@ -58,6 +58,7 @@ export default function AdminLayout() {
         <NavItem to="/admin" end icon={<Home size={14} />}>홈</NavItem>
         <NavItem to="/admin/sources" icon={<Database size={14} />}>소스 관리</NavItem>
         <NavItem to="/admin/history" icon={<History size={14} />}>변경 이력</NavItem>
+        <NavItem to="/admin/logs" icon={<Activity size={14} />}>실행 로그</NavItem>
         <NavItem
           to="/admin/errors"
           icon={<AlertTriangle size={14} />}

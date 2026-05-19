@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Database, History, AlertTriangle } from 'lucide-react'
+import { Database, History, AlertTriangle, Activity } from 'lucide-react'
 
 export default function AdminHome() {
   return (
@@ -22,6 +22,9 @@ export default function AdminHome() {
         </Card>
         <Card to="/admin/history" icon={<History size={18} />} title="변경 이력">
           누가 언제 어떤 URL을 바꿨는지 시간 순으로 볼 수 있어요.
+        </Card>
+        <Card to="/admin/logs" icon={<Activity size={18} />} title="실행 로그">
+          최근 스크래핑 실행 내역과 기관별 상세를 실시간으로 볼 수 있어요.
         </Card>
         <Card to="/admin/errors" icon={<AlertTriangle size={18} />} title="오류 로그">
           스크래퍼가 4xx · 5xx 응답을 받은 기록입니다. 새 오류는 화면 오른쪽 위에 토스트로도 표시됩니다.

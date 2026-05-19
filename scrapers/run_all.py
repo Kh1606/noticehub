@@ -13,7 +13,9 @@ import argparse
 import importlib
 import os
 import sys
+import time
 import urllib3
+from datetime import datetime, timezone
 
 try:
     from dotenv import load_dotenv
@@ -211,6 +213,45 @@ def main():
     dropped_non_v2 = 0
     patched_meta = 0
     failures: list[tuple[str, str]] = []
+    attempted_sources = 0
+    succeeded_sources = 0
+
+    # Open a scrape_runs row at the start of the run so the admin /admin/logs
+    # page shows a live "running" entry. Best-effort: a logging failure here
+    # must never prevent the actual scrape from executing.
+    run_id = None
+    if supabase_sink is not None:
+        try:
+            res = supabase_sink.client.table("scrape_runs").insert({
+                "source_filter": args.only,
+                "exit_status": "running",
+            }).execute()
+            if res.data:
+                run_id = res.data[0]["id"]
+                print(f"Opened scrape_runs id={run_id} (running)")
+        except Exception as e:  # noqa: BLE001
+            print(f"(could not open scrape_runs: {e})", file=sys.stderr)
+
+    def _log_attempt(src, status, *, notice_count=0, error_text=None, http_status=None, duration_ms=None):
+        """Insert a scrape_attempts row. Silently swallows any failure."""
+        if run_id is None or supabase_sink is None:
+            return
+        try:
+            supabase_sink.client.table("scrape_attempts").insert({
+                "run_id": run_id,
+                "region": getattr(src, "region", None),
+                "sub_entity": getattr(src, "sub_entity", None),
+                "source_page": getattr(src, "source_page", None),
+                "source_url": getattr(src, "source_url", None),
+                "status": status,
+                "notice_count": notice_count,
+                "error_text": error_text,
+                "http_status": http_status,
+                "duration_ms": duration_ms,
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+        except Exception as e:  # noqa: BLE001
+            print(f"   (could not log scrape_attempt: {e})", file=sys.stderr)
 
     for mod_path in SCRAPERS:
         if args.only and args.only not in mod_path:
@@ -229,9 +270,12 @@ def main():
         for src, scrape_fn in entries:
             if v2_norm(src.source_url) not in V2_ALLOWLIST:
                 skipped_non_v2 += 1
+                _log_attempt(src, "skipped")
                 continue
             print(f"\n── {src.region} / {src.sub_entity} / {src.source_page}")
             print(f"   {src.source_url}")
+            attempted_sources += 1
+            attempt_start = time.time()
             try:
                 notices = scrape_fn()
                 before = len(notices)
@@ -255,32 +299,44 @@ def main():
                     supabase_sink.write(notices)
                 print(f"   → {count} notices")
                 total += count
+                succeeded_sources += 1
+                _log_attempt(
+                    src, "ok",
+                    notice_count=count,
+                    duration_ms=int((time.time() - attempt_start) * 1000),
+                )
             except Exception as e:  # noqa: BLE001
                 print(f"   ✗ FAILED: {type(e).__name__}: {e}", file=sys.stderr)
                 failures.append((f"{mod_path}/{src.sub_entity}", repr(e)))
+                http_status = 0
+                try:
+                    import requests as _r
+                    if isinstance(e, _r.exceptions.HTTPError) and e.response is not None:
+                        http_status = e.response.status_code
+                except Exception:
+                    http_status = 0
+                # Per-source attempt row (for /admin/logs)
+                _log_attempt(
+                    src, "failed",
+                    error_text=f"{type(e).__name__}: {str(e)[:500]}",
+                    http_status=http_status or None,
+                    duration_ms=int((time.time() - attempt_start) * 1000),
+                )
                 # Persist 4xx/5xx into scrape_errors so the admin UI can surface
                 # them as a Realtime toast. Best-effort: a logging failure here
                 # must never kill the scrape run.
-                if supabase_sink is not None:
-                    status = 0
+                if supabase_sink is not None and 400 <= http_status < 600:
                     try:
-                        import requests as _r
-                        if isinstance(e, _r.exceptions.HTTPError) and e.response is not None:
-                            status = e.response.status_code
-                    except Exception:
-                        status = 0
-                    if 400 <= status < 600:
-                        try:
-                            supabase_sink.client.table("scrape_errors").insert({
-                                "region": src.region,
-                                "sub_entity": src.sub_entity,
-                                "source_page": src.source_page,
-                                "url_tried": src.source_url,
-                                "status_code": status,
-                                "error_text": f"{type(e).__name__}: {str(e)[:500]}",
-                            }).execute()
-                        except Exception as log_err:  # noqa: BLE001
-                            print(f"   (could not log scrape_error: {log_err})", file=sys.stderr)
+                        supabase_sink.client.table("scrape_errors").insert({
+                            "region": src.region,
+                            "sub_entity": src.sub_entity,
+                            "source_page": src.source_page,
+                            "url_tried": src.source_url,
+                            "status_code": http_status,
+                            "error_text": f"{type(e).__name__}: {str(e)[:500]}",
+                        }).execute()
+                    except Exception as log_err:  # noqa: BLE001
+                        print(f"   (could not log scrape_error: {log_err})", file=sys.stderr)
             polite_sleep(1.0)
 
     if json_sink:
@@ -291,6 +347,28 @@ def main():
     print(f"Skipped (not in v2 allowlist): {skipped_non_v2} entries")
     print(f"Dropped from results (non-v2 source_url): {dropped_non_v2} notices")
     print(f"Patched metadata to v2 labels: {patched_meta} notices")
+
+    # Close out scrape_runs row with summary totals. Best-effort.
+    if run_id is not None and supabase_sink is not None:
+        if not attempted_sources:
+            exit_status = "failed"
+        elif failures:
+            exit_status = "partial"
+        else:
+            exit_status = "ok"
+        try:
+            supabase_sink.client.table("scrape_runs").update({
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "total_attempted": attempted_sources,
+                "total_succeeded": succeeded_sources,
+                "total_failed": len(failures),
+                "total_notices": total,
+                "exit_status": exit_status,
+            }).eq("id", run_id).execute()
+            print(f"Closed scrape_runs id={run_id} ({exit_status})")
+        except Exception as e:  # noqa: BLE001
+            print(f"(could not close scrape_runs: {e})", file=sys.stderr)
+
     if failures:
         print(f"Failures: {len(failures)}")
         for path, err in failures:

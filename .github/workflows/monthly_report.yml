@@ -1,0 +1,52 @@
+name: Monthly notices report
+
+# Runs at 00:00 UTC on the 1st of every month (= 09:00 KST).
+# Can also be triggered manually from the Actions tab via "Run workflow".
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: monthly-report
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      ALERT_TO: ${{ secrets.ALERT_TO }}
+      ALERT_FROM: ${{ secrets.ALERT_FROM }}
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: scrapers/requirements.txt
+
+      - name: Install deps
+        run: pip install -r scrapers/requirements.txt
+
+      - name: Verify secrets are configured
+        run: |
+          for v in SUPABASE_URL SUPABASE_SECRET_KEY RESEND_API_KEY ALERT_TO ALERT_FROM; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Repository secret $v is not set."
+              echo "::error::Add at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+              exit 1
+            fi
+          done
+
+      - name: Send monthly report
+        run: python -m scrapers.monthly_report

@@ -12,6 +12,7 @@ import AdminHome from './components/admin/AdminHome.jsx'
 import SourcesPage from './components/admin/SourcesPage.jsx'
 import HistoryPage from './components/admin/HistoryPage.jsx'
 import ErrorsPage from './components/admin/ErrorsPage.jsx'
+import LogsPage from './components/admin/LogsPage.jsx'
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="sources" element={<SourcesPage />} />
         <Route path="history" element={<HistoryPage />} />
         <Route path="errors" element={<ErrorsPage />} />
+        <Route path="logs" element={<LogsPage />} />
       </Route>
     </Routes>
   )
