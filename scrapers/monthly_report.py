@@ -261,11 +261,12 @@ def main():
     )
     print(f"Errors fetched: {len(errors):,}")
 
-    # Previous-previous month total for delta comparison
+    # Previous-previous month total for delta comparison.
+    # notices_v2's primary key is notice_id (sha1 composite), not "id".
     pprev_start, pprev_end, _ = previous_month_range(start)
     pprev_notices = page_all(
         client, "notices_v2",
-        "id",
+        "notice_id",
         gte_col="scraped_at", gte=pprev_start.isoformat(),
         lt_col="scraped_at", lt=pprev_end.isoformat(),
     )
