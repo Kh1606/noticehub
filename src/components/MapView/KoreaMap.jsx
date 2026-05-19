@@ -6,26 +6,30 @@ import { ArrowLeft } from 'lucide-react'
 import { geoNameToRegion } from './regionNameMap.js'
 import { makeColorScale } from './colorScale.js'
 
-// Color used for provinces with zero notices — neutral gray, clearly "no data".
-const INACTIVE_FILL = '#E5E7EB'
-
 const PROVINCES_URL = `${import.meta.env.BASE_URL}data/skorea-provinces-topo.json`
 const MUNICIPALITIES_URL = `${import.meta.env.BASE_URL}data/skorea-municipalities-topo.json`
 
 // Projection tuned for South Korea — keeps the peninsula well-centered.
-const PROJECTION_CONFIG = {
-  scale: 5500,
-  center: [127.8, 36.0],
-}
-
+const PROJECTION_CONFIG = { scale: 5500, center: [127.8, 36.0] }
 const DEFAULT_CENTER = PROJECTION_CONFIG.center
 const ZOOM_IN = 3.5
 
+// Color used for provinces / sub-regions with zero notices.
+const INACTIVE_FILL = '#E5E7EB'
+
+/**
+ * @param countsByRegion  { [regionName]: total }
+ * @param countsBySub     { [regionName]: { [subName]: count } }
+ * @param selectedRegionName  string | null (from App.selected.region)
+ * @param onPickRegion(regionName)
+ * @param onPickSub(regionName, subName)
+ */
 export default function KoreaMap({
   countsByRegion,
-  selectedRegion,
-  onSelectRegion,
-  onSelectMunicipality,
+  countsBySub,
+  selectedRegionName,
+  onPickRegion,
+  onPickSub,
 }) {
   const containerRef = useRef(null)
   const [size, setSize] = useState({ w: 800, h: 600 })
@@ -36,6 +40,9 @@ export default function KoreaMap({
   // Animated camera state (driven by react-spring → React state, per-frame).
   const [zoom, setZoom] = useState(1)
   const [center, setCenter] = useState(DEFAULT_CENTER)
+
+  // Selected province's TopoJSON code + centroid (looked up from geographies).
+  const [selectedProvince, setSelectedProvince] = useState(null) // { code, centroid }
 
   // Track container size for a responsive SVG viewport.
   useEffect(() => {
@@ -51,24 +58,35 @@ export default function KoreaMap({
 
   // Lazy-load municipalities on first drill-in.
   useEffect(() => {
-    if (!selectedRegion || muniData || muniLoading) return
+    if (!selectedRegionName || muniData || muniLoading) return
     setMuniLoading(true)
     fetch(MUNICIPALITIES_URL)
       .then(r => r.json())
       .then(json => setMuniData(json))
       .catch(err => console.error('Failed to load municipalities:', err))
       .finally(() => setMuniLoading(false))
-  }, [selectedRegion, muniData, muniLoading])
+  }, [selectedRegionName, muniData, muniLoading])
 
-  // Compute target zoom/center from selection.
-  const target = useMemo(() => {
-    if (selectedRegion?.centroid) {
-      return { zoom: ZOOM_IN, cx: selectedRegion.centroid[0], cy: selectedRegion.centroid[1] }
+  // When App's selected.region changes, clear the local province cache so
+  // the next "found" lookup runs against the new region.
+  useEffect(() => {
+    if (!selectedRegionName) {
+      setSelectedProvince(null)
     }
-    return { zoom: 1, cx: DEFAULT_CENTER[0], cy: DEFAULT_CENTER[1] }
-  }, [selectedRegion])
+  }, [selectedRegionName])
 
   // Spring drives zoom + center via per-frame state updates.
+  const target = useMemo(() => {
+    if (selectedProvince?.centroid) {
+      return {
+        zoom: ZOOM_IN,
+        cx: selectedProvince.centroid[0],
+        cy: selectedProvince.centroid[1],
+      }
+    }
+    return { zoom: 1, cx: DEFAULT_CENTER[0], cy: DEFAULT_CENTER[1] }
+  }, [selectedProvince])
+
   useSpring({
     zoom: target.zoom,
     cx: target.cx,
@@ -80,29 +98,55 @@ export default function KoreaMap({
     },
   })
 
-  const selectedProvinceCode = selectedRegion?.code ?? null
-  const showMunicipalities = !!selectedProvinceCode && !!muniData
+  const showMunicipalities = !!selectedProvince && !!muniData
 
-  // Build the count → color function once per render (cheap, but memo keeps
-  // the d3 scale stable across geography map iterations).
+  // Color scale for province coloring.
   const maxCount = useMemo(
     () => Object.values(countsByRegion).reduce((a, b) => Math.max(a, b), 0),
     [countsByRegion],
   )
   const colorScale = useMemo(() => makeColorScale(maxCount), [maxCount])
 
+  // Pre-compute the sub-name → count map for the currently-selected region,
+  // with name normalization so TopoJSON municipality names (e.g. `청주시상당구`,
+  // `중구`) resolve to v2 sub_entity names (e.g. `청주시-상당구`, `대구시청`).
+  const subLookup = useMemo(() => {
+    if (!selectedRegionName) return null
+    const subs = countsBySub[selectedRegionName] || {}
+    return buildSubMatcher(subs)
+  }, [countsBySub, selectedRegionName])
+
+  // Pre-compute max sub-count for the selected region (drives sub color scale).
+  const maxSubCount = useMemo(() => {
+    if (!selectedRegionName) return 0
+    const m = countsBySub[selectedRegionName] || {}
+    return Object.values(m).reduce((a, b) => Math.max(a, b, 0), 0)
+  }, [countsBySub, selectedRegionName])
+  const subColorScale = useMemo(() => makeColorScale(maxSubCount), [maxSubCount])
+
   const handleProvinceClick = (geo) => {
     const regionName = geoNameToRegion(geo.properties.name)
     const centroid = geoCentroid(geo)
-    onSelectRegion({
-      region: regionName,
-      code: geo.properties.code,
-      geoName: geo.properties.name,
-      centroid,
-    })
+    setSelectedProvince({ code: geo.properties.code, centroid })
+    onPickRegion?.(regionName)
   }
 
-  const handleBack = () => onSelectRegion(null)
+  const handleMunicipalityClick = (geo) => {
+    if (!selectedRegionName || !subLookup) return
+    const muniName = geo.properties.name
+    const subName = subLookup.match(muniName)
+    if (subName) {
+      onPickSub?.(selectedRegionName, subName)
+    } else {
+      // No matching v2 sub — keep the region selected, no-op on sub.
+      onPickRegion?.(selectedRegionName)
+    }
+  }
+
+  const handleBack = () => {
+    setSelectedProvince(null)
+    // Don't auto-close the side panel — user may want to keep browsing.
+  }
 
   return (
     <div
@@ -136,8 +180,8 @@ export default function KoreaMap({
               geographies.map(geo => {
                 const regionName = geoNameToRegion(geo.properties.name)
                 const count = countsByRegion[regionName] ?? 0
-                const isSelected = selectedProvinceCode === geo.properties.code
-                const isOther = selectedProvinceCode && !isSelected
+                const isSelected = selectedProvince?.code === geo.properties.code
+                const isOther = !!selectedProvince && !isSelected
                 return (
                   <Geography
                     key={geo.rsmKey}
@@ -157,8 +201,6 @@ export default function KoreaMap({
                     onMouseLeave={() => setHover(null)}
                     style={{
                       default: {
-                        // count === 0 → neutral gray (clearly no data)
-                        // count > 0  → blue from interpolateBlues, intensity scaled by count
                         fill: count > 0 ? colorScale(count) : INACTIVE_FILL,
                         fillOpacity: isOther ? 0.35 : 1,
                         stroke: '#FFFFFF',
@@ -175,10 +217,7 @@ export default function KoreaMap({
                         outline: 'none',
                         cursor: 'pointer',
                       },
-                      pressed: {
-                        fill: 'var(--accent-hover)',
-                        outline: 'none',
-                      },
+                      pressed: { fill: 'var(--accent-hover)', outline: 'none' },
                     }}
                   />
                 )
@@ -189,8 +228,10 @@ export default function KoreaMap({
           {showMunicipalities && (
             <MunicipalityLayer
               topo={muniData}
-              parentCode={selectedProvinceCode}
-              onSelect={onSelectMunicipality}
+              parentCode={selectedProvince.code}
+              subLookup={subLookup}
+              subColorScale={subColorScale}
+              onClick={handleMunicipalityClick}
               setHover={setHover}
             />
           )}
@@ -224,7 +265,7 @@ export default function KoreaMap({
         </div>
       )}
 
-      {selectedRegion && (
+      {selectedProvince && (
         <button
           onClick={handleBack}
           style={{
@@ -243,6 +284,7 @@ export default function KoreaMap({
             color: 'var(--accent)',
             boxShadow: 'var(--shadow-sm)',
             zIndex: 20,
+            cursor: 'pointer',
           }}
         >
           <ArrowLeft size={14} />
@@ -250,7 +292,7 @@ export default function KoreaMap({
         </button>
       )}
 
-      {muniLoading && selectedRegion && (
+      {muniLoading && selectedRegionName && (
         <div
           style={{
             position: 'absolute',
@@ -272,7 +314,7 @@ export default function KoreaMap({
   )
 }
 
-function MunicipalityLayer({ topo, parentCode, onSelect, setHover }) {
+function MunicipalityLayer({ topo, parentCode, subLookup, subColorScale, onClick, setHover }) {
   const filtered = useMemo(() => {
     const key = Object.keys(topo.objects)[0]
     const obj = topo.objects[key]
@@ -282,7 +324,7 @@ function MunicipalityLayer({ topo, parentCode, onSelect, setHover }) {
         [key]: {
           ...obj,
           geometries: obj.geometries.filter(g =>
-            String(g.properties.code).startsWith(parentCode)
+            String(g.properties.code).startsWith(parentCode),
           ),
         },
       },
@@ -299,45 +341,109 @@ function MunicipalityLayer({ topo, parentCode, onSelect, setHover }) {
   return (
     <Geographies geography={filtered}>
       {({ geographies }) =>
-        geographies.map((geo, i) => (
-          <Geography
-            key={geo.rsmKey}
-            geography={geo}
-            onClick={() => onSelect({
-              name: geo.properties.name,
-              code: geo.properties.code,
-            })}
-            onMouseEnter={e => setHover({
-              x: e.clientX,
-              y: e.clientY,
-              label: geo.properties.name,
-              count: null,
-            })}
-            onMouseMove={e => setHover(h => h ? { ...h, x: e.clientX, y: e.clientY } : null)}
-            onMouseLeave={() => setHover(null)}
-            style={{
-              default: {
-                fill: 'var(--accent)',
-                fillOpacity: shown ? 0.45 : 0,
-                stroke: '#FFFFFF',
-                strokeWidth: 0.4,
-                outline: 'none',
-                transition: `fill-opacity 0.4s ease ${i * 8}ms`,
-                cursor: 'pointer',
-              },
-              hover: {
-                fill: 'var(--primary-mid)',
-                fillOpacity: 0.85,
-                stroke: '#FFFFFF',
-                strokeWidth: 0.6,
-                outline: 'none',
-                cursor: 'pointer',
-              },
-              pressed: { fill: 'var(--accent-hover)', outline: 'none' },
-            }}
-          />
-        ))
+        geographies.map((geo, i) => {
+          const muniName = geo.properties.name
+          const matchedSub = subLookup?.match(muniName) ?? null
+          const count = matchedSub ? (subLookup.counts[matchedSub] ?? 0) : 0
+          return (
+            <Geography
+              key={geo.rsmKey}
+              geography={geo}
+              onClick={() => onClick(geo)}
+              onMouseEnter={e => setHover({
+                x: e.clientX,
+                y: e.clientY,
+                label: muniName,
+                count: count > 0 ? count : null,
+              })}
+              onMouseMove={e => setHover(h => h ? { ...h, x: e.clientX, y: e.clientY } : null)}
+              onMouseLeave={() => setHover(null)}
+              style={{
+                default: {
+                  fill: count > 0 ? subColorScale(count) : INACTIVE_FILL,
+                  fillOpacity: shown ? 1 : 0,
+                  stroke: '#FFFFFF',
+                  strokeWidth: 0.4,
+                  outline: 'none',
+                  transition: `fill-opacity 0.4s ease ${i * 8}ms, fill 0.25s ease`,
+                  cursor: count > 0 ? 'pointer' : 'default',
+                },
+                hover: {
+                  fill: count > 0 ? 'var(--primary-mid)' : '#CFD3DA',
+                  fillOpacity: 1,
+                  stroke: '#FFFFFF',
+                  strokeWidth: 0.7,
+                  outline: 'none',
+                  cursor: count > 0 ? 'pointer' : 'default',
+                },
+                pressed: { fill: 'var(--accent-hover)', outline: 'none' },
+              }}
+            />
+          )
+        })
       }
     </Geographies>
   )
+}
+
+/**
+ * Build a matcher from TopoJSON municipality names to v2 sub_entity names.
+ * The two name spaces use different conventions:
+ *   topo: `청주시상당구`, `중구`, `김해시`
+ *   v2:   `청주시-상당구`, `대구시청`, `김해시`
+ *
+ * We index every v2 sub name with a handful of normalized variants
+ * (lowercase, hyphen-stripped, suffix-stripped) so direct lookup is O(1).
+ * Returns { counts, match(muniName) -> v2SubName | null }.
+ */
+function buildSubMatcher(countsForRegion) {
+  const counts = countsForRegion || {}
+  const index = new Map() // normalizedKey -> v2SubName
+
+  for (const subName of Object.keys(counts)) {
+    for (const key of subVariants(subName)) {
+      if (!index.has(key)) index.set(key, subName)
+    }
+  }
+
+  return {
+    counts,
+    match(muniName) {
+      if (!muniName) return null
+      for (const key of muniVariants(muniName)) {
+        if (index.has(key)) return index.get(key)
+      }
+      return null
+    },
+  }
+}
+
+function subVariants(name) {
+  const v = new Set()
+  const norm = name.trim()
+  v.add(norm)
+  // Hyphen-stripped: 청주시-상당구 -> 청주시상당구
+  v.add(norm.replace(/-/g, ''))
+  // Strip city prefix: 청주시-상당구 -> 상당구
+  const m = norm.match(/^([가-힣]+시)-?([가-힣]+(?:구|군))$/)
+  if (m) v.add(m[2])
+  // Strip 시청/도청/구청/군청/공사/공단 suffix:
+  //   광주시청 -> 광주시 / 광주도청 -> 광주도 / 부산도시공사 -> 부산도시
+  v.add(norm.replace(/(시청|도청|구청|군청)$/u, '시'))
+  v.add(norm.replace(/시청$/u, '시'))
+  v.add(norm.replace(/도청$/u, '도'))
+  return Array.from(v).filter(Boolean)
+}
+
+function muniVariants(name) {
+  const v = new Set()
+  const norm = name.trim()
+  v.add(norm)
+  // Try with hyphen inserted between 시 and district: 청주시상당구 -> 청주시-상당구
+  const m = norm.match(/^([가-힣]+시)([가-힣]+(?:구|군))$/)
+  if (m) {
+    v.add(`${m[1]}-${m[2]}`)
+    v.add(m[2]) // just the district
+  }
+  return Array.from(v).filter(Boolean)
 }

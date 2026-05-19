@@ -1,15 +1,16 @@
 import { useEffect, useState, useCallback } from 'react'
 
 const STORAGE_KEY = 'clt-plus.viewMode'
-const VALID = new Set(['list', 'map', 'inventory'])
+const VALID = new Set(['inventory', 'map'])
+const DEFAULT_MODE = 'inventory'
 
 function readInitial() {
-  if (typeof window === 'undefined') return 'list'
+  if (typeof window === 'undefined') return DEFAULT_MODE
   try {
     const v = window.localStorage.getItem(STORAGE_KEY)
-    return VALID.has(v) ? v : 'list'
+    return VALID.has(v) ? v : DEFAULT_MODE
   } catch {
-    return 'list'
+    return DEFAULT_MODE
   }
 }
 

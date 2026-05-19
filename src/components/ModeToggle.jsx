@@ -1,8 +1,7 @@
-import { List, Map as MapIcon, LayoutGrid } from 'lucide-react'
+import { Map as MapIcon, LayoutGrid } from 'lucide-react'
 
 const OPTIONS = [
   { value: 'inventory', label: '개요', Icon: LayoutGrid },
-  { value: 'list', label: '목록', Icon: List },
   { value: 'map', label: '지도', Icon: MapIcon },
 ]
 
