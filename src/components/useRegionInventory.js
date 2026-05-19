@@ -1,22 +1,18 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
-function isoNDaysAgo(n) {
-  const d = new Date()
-  d.setUTCDate(d.getUTCDate() - n)
-  return d.toISOString()
-}
-
 /**
- * Inventory roll-up for the dashboard.
- * Fetches the last `lookbackDays` of notices_v2, groups by (region, sub_entity),
- * and returns:
- *   { status, totalNotices, latestAt,
- *     byRegion: [{ region, total, byEntity: [{name, count}], latestAt }] }
+ * Inventory roll-up.
  *
- * One Supabase query — client-side aggregation is fine at this scale.
+ * Returns { status, totalNotices, latestAt,
+ *           byRegion: [{ region, total, byEntity: [{name, count}], latestAt }] }
+ *
+ * Fetches every notice in notices_v2 (no time filter) so per-org counts
+ * match what NoticeList renders below — clicking an "X건" chip and
+ * seeing X notices in the list right under it. With ~2k rows in the
+ * table this is a single small query; the cap is 10000.
  */
-export default function useRegionInventory(lookbackDays = 30) {
+export default function useRegionInventory() {
   const [state, setState] = useState({
     status: 'loading',
     totalNotices: 0,
@@ -29,7 +25,6 @@ export default function useRegionInventory(lookbackDays = 30) {
     supabase
       .from('notices_v2')
       .select('region,sub_entity,posted_at,scraped_at')
-      .gte('scraped_at', isoNDaysAgo(lookbackDays))
       .limit(10000)
       .then(({ data, error }) => {
         if (cancelled) return
@@ -77,7 +72,7 @@ export default function useRegionInventory(lookbackDays = 30) {
         })
       })
     return () => { cancelled = true }
-  }, [lookbackDays])
+  }, [])
 
   return state
 }

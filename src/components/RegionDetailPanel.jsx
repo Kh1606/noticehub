@@ -31,7 +31,7 @@ export default function RegionDetailPanel({
     return r?.subEntities ?? null
   }, [region])
 
-  const inv = useRegionInventory(30)
+  const inv = useRegionInventory()
   const countsBySub = useMemo(() => {
     if (!region) return {}
     const r = inv.byRegion.find(x => x.region === region)

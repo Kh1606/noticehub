@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import regionsData from '../data/regions.json'
 import useRegionInventory from './useRegionInventory.js'
 
-const LOOKBACK_DAYS = 30
 
 function formatRelative(ts) {
   if (!ts) return '데이터 없음'
@@ -17,7 +16,7 @@ function formatRelative(ts) {
 }
 
 export default function InventoryView({ onPick }) {
-  const { status, totalNotices, latestAt, byRegion } = useRegionInventory(LOOKBACK_DAYS)
+  const { status, totalNotices, latestAt, byRegion } = useRegionInventory()
 
   // Pre-compute the canonical region universe from regions.json so empty
   // regions are visible too (sorted to the bottom as muted chips).
@@ -52,7 +51,7 @@ export default function InventoryView({ onPick }) {
         overflow: 'auto',
       }}
     >
-      <SectionTitle title="현황 개요" subtitle={`최근 ${LOOKBACK_DAYS}일 · 실시간 Supabase 조회`} />
+      <SectionTitle title="현황 개요" subtitle="전체 공지 · 실시간 Supabase 조회" />
 
       <StatsStrip
         stats={[

@@ -19,7 +19,7 @@ const MUNICIPALITIES_URL = `${import.meta.env.BASE_URL}data/skorea-municipalitie
  * a clickable chip bar above the map.
  */
 export default function MapView({ selected, onPickRegion, onPickSub }) {
-  const inv = useRegionInventory(30)
+  const inv = useRegionInventory()
 
   // Region totals from the inventory roll-up.
   const countsByRegion = useMemo(() => {
@@ -88,7 +88,7 @@ export default function MapView({ selected, onPickRegion, onPickSub }) {
             대한민국 공공기관 지도
           </h1>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-            최근 30일 공지 수 기준 히트맵 ·
+            전체 공지 수 기준 히트맵 ·
             {inv.status === 'loading' && ' 데이터 불러오는 중…'}
             {inv.status === 'ready' && ` 전체 ${inv.totalNotices.toLocaleString()}건`}
             {inv.status === 'error' && ' 데이터 연결 오류'}
