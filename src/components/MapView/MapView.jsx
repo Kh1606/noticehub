@@ -3,7 +3,6 @@ import regionsData from '../../data/regions.json'
 import useRegionInventory from '../useRegionInventory.js'
 import { NON_GEOGRAPHIC_REGIONS } from './regionNameMap.js'
 import KoreaMap from './KoreaMap.jsx'
-import { buildSubMatcher, municipalitiesForRegion } from './nameMatcher.js'
 
 const MUNICIPALITIES_URL = `${import.meta.env.BASE_URL}data/skorea-municipalities-topo.json`
 
@@ -59,29 +58,6 @@ export default function MapView({ selected, onPickRegion, onPickSub }) {
       .catch(err => console.error('Failed to load municipalities:', err))
       .finally(() => setMuniLoading(false))
   }, [selected?.region, muniData, muniLoading])
-
-  // Compute the orgs for the currently-selected region that DON'T match
-  // any polygon — these are the chips rendered above the map. For example,
-  // 부산광역시 → all 5 v2 orgs (all city-wide); 경기도 → 경기도청,
-  // 경기도시공사 (city-level orgs match districts already).
-  const unmatchedOrgs = useMemo(() => {
-    if (!selected?.region || !muniData) return []
-    const province = regionsData.find(r => r.region === selected.region)
-    if (!province) return []
-    const allSubs = province.subEntities.map(s => s.name)
-    const matcher = buildSubMatcher(countsBySub[selected.region] || {})
-    // Build set of subs that DO match some polygon in this province.
-    const munis = municipalitiesForRegion(muniData, selected.region)
-    const matchedSubs = new Set()
-    for (const g of munis) {
-      const m = matcher.match(g.properties.name)
-      if (m) matchedSubs.add(m)
-    }
-    const subCounts = countsBySub[selected.region] || {}
-    return allSubs
-      .filter(s => !matchedSubs.has(s))
-      .map(name => ({ name, count: subCounts[name] || 0 }))
-  }, [selected?.region, muniData, countsBySub])
 
   return (
     <div
@@ -150,16 +126,6 @@ export default function MapView({ selected, onPickRegion, onPickSub }) {
         )}
       </div>
 
-      {/* Chip bar: orgs for the selected province that don't match any polygon */}
-      {selected?.region && unmatchedOrgs.length > 0 && (
-        <UnmatchedOrgsBar
-          regionName={selected.region}
-          orgs={unmatchedOrgs}
-          selectedSub={selected.sub ?? null}
-          onPickSub={onPickSub}
-        />
-      )}
-
       <div style={{ position: 'relative', flex: 1, minHeight: 480 }}>
         <KoreaMap
           countsByRegion={countsByRegion}
@@ -176,67 +142,3 @@ export default function MapView({ selected, onPickRegion, onPickSub }) {
   )
 }
 
-function UnmatchedOrgsBar({ regionName, orgs, selectedSub, onPickSub }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '10px 14px',
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)',
-        boxShadow: 'var(--shadow-sm)',
-        flexWrap: 'wrap',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: 'var(--text-muted)',
-          textTransform: 'uppercase',
-          letterSpacing: 0.4,
-          marginRight: 4,
-          flexShrink: 0,
-        }}
-      >
-        {regionName} 기관
-      </div>
-      {orgs.map(({ name, count }) => {
-        const isActive = name === selectedSub
-        return (
-          <button
-            key={name}
-            onClick={() => onPickSub?.(regionName, name)}
-            title={`${name} · ${count}건`}
-            style={{
-              padding: '5px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-              background: isActive ? '#F97316' : 'var(--bg-card)',
-              color: isActive ? '#fff' : 'var(--text-primary)',
-              border: '1px solid ' + (isActive ? '#C2410C' : 'var(--border)'),
-              borderRadius: 999,
-              cursor: 'pointer',
-              transition: 'background 0.15s, color 0.15s',
-              whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={e => {
-              if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'
-            }}
-            onMouseLeave={e => {
-              if (!isActive) e.currentTarget.style.background = 'var(--bg-card)'
-            }}
-          >
-            {name}
-            <span style={{ opacity: isActive ? 0.85 : 0.55, marginLeft: 6, fontWeight: 500 }}>
-              · {count}건
-            </span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
