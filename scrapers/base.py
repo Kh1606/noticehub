@@ -20,7 +20,7 @@ import re
 import time
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
-from typing import Iterable, Protocol
+from typing import ClassVar, Iterable, Protocol
 
 import ssl
 
@@ -45,12 +45,32 @@ DEFAULT_HEADERS = {
 }
 
 
-@dataclass(frozen=True)
+# URL override registry. Populated at run_all.py startup BEFORE any scraper
+# module imports its SOURCE constant. Keyed by (region, sub_entity, source_page).
+# Admins edit URLs through the web UI; rows live in Supabase table source_overrides.
+@dataclass
 class SourceMeta:
     region: str
     sub_entity: str
     source_page: str
     source_url: str
+
+    # Class-level — shared across every SourceMeta instance.
+    _OVERRIDES: ClassVar[dict[tuple[str, str, str], str]] = {}
+
+    def __post_init__(self):
+        # If admins have overridden this (region, sub, page), swap the URL in
+        # before anyone reads source_url. Frozen=False so we can assign.
+        override = SourceMeta._OVERRIDES.get(
+            (self.region, self.sub_entity, self.source_page)
+        )
+        if override and override != self.source_url:
+            self.source_url = override
+
+    def __hash__(self):
+        # Needed because dropping frozen=True drops the auto-generated hash.
+        # SourceMeta is used as dict keys in v2 reconciler code.
+        return hash((self.region, self.sub_entity, self.source_page, self.source_url))
 
 
 @dataclass
@@ -269,3 +289,30 @@ class SupabaseSink:
 # Polite default delay between sites
 def polite_sleep(seconds: float = 1.0):
     time.sleep(seconds)
+
+
+def load_overrides_from_supabase(url: str, secret_key: str) -> int:
+    """Populate SourceMeta._OVERRIDES from the Supabase `source_overrides` table.
+
+    Must be called BEFORE any scraper module is imported, so that each
+    SourceMeta(...) constructor in those modules sees the registry and swaps
+    its source_url in __post_init__.
+
+    Returns the number of overrides loaded (0 on any error — safe fallback,
+    scrapers continue with hardcoded URLs).
+    """
+    try:
+        from supabase import create_client
+        client = create_client(url, secret_key)
+        rows = client.table("source_overrides") \
+            .select("region,sub_entity,source_page,new_url") \
+            .execute().data or []
+        SourceMeta._OVERRIDES = {
+            (r["region"], r["sub_entity"], r["source_page"]): r["new_url"]
+            for r in rows
+        }
+        return len(SourceMeta._OVERRIDES)
+    except Exception as e:  # noqa: BLE001
+        print(f"WARN: could not load source overrides ({type(e).__name__}: {e}); using defaults.")
+        SourceMeta._OVERRIDES = {}
+        return 0

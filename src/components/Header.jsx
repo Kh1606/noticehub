@@ -1,6 +1,10 @@
+import { Link } from 'react-router-dom'
+import { Shield } from 'lucide-react'
 import ModeToggle from './ModeToggle.jsx'
+import { useAuth } from '../lib/auth.jsx'
 
 export default function Header({ viewMode, setViewMode }) {
+  const { isAdmin } = useAuth()
   return (
     <header
       style={{
@@ -44,11 +48,32 @@ export default function Header({ viewMode, setViewMode }) {
             공공기관 공지사항 통합 뷰어
           </div>
         </div>
-        {setViewMode && (
-          <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {setViewMode && (
             <ModeToggle viewMode={viewMode} setViewMode={setViewMode} />
-          </div>
-        )}
+          )}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              title="관리자"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 10px',
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#fff',
+                background: 'rgba(255,255,255,0.12)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: 6,
+                textDecoration: 'none',
+              }}
+            >
+              <Shield size={12} /> Admin
+            </Link>
+          )}
+        </div>
       </div>
     </header>
   )

@@ -21,7 +21,13 @@ try:
 except ImportError:
     pass
 
-from scrapers.base import StdoutSink, JsonFileSink, SupabaseSink, polite_sleep
+from scrapers.base import (
+    StdoutSink,
+    JsonFileSink,
+    SupabaseSink,
+    polite_sleep,
+    load_overrides_from_supabase,
+)
 from scrapers._v2_allowlist import V2_ALLOWLIST, norm as v2_norm
 
 
@@ -152,6 +158,10 @@ SCRAPERS = [
 
 
 def main():
+    # We rebind V2_ALLOWLIST below if admin overrides exist; without the
+    # global declaration Python treats it as a local for the whole function
+    # and the `V2_ALLOWLIST | {...}` line crashes with UnboundLocalError.
+    global V2_ALLOWLIST
     urllib3.disable_warnings()
 
     # Windows consoles default to cp949; force UTF-8 with replace fallback so
@@ -182,6 +192,19 @@ def main():
             print("ERROR: --supabase requires SUPABASE_URL and SUPABASE_SECRET_KEY in env (.env)", file=sys.stderr)
             sys.exit(2)
         supabase_sink = SupabaseSink(url, key)
+        # Load admin-edited URL overrides BEFORE any scraper module is imported.
+        # SourceMeta.__post_init__ swaps in the override at construction time, so
+        # this must run first or the module-level SOURCE = SourceMeta(...) lines
+        # will lock in the hardcoded URL.
+        n_overrides = load_overrides_from_supabase(url, key)
+        print(f"Loaded {n_overrides} URL override(s) from Supabase.")
+        # Admin-approved overrides also pass the v2 allowlist gate, otherwise the
+        # filter below silently skips every source whose URL has been edited.
+        from scrapers.base import SourceMeta
+        if SourceMeta._OVERRIDES:
+            V2_ALLOWLIST = V2_ALLOWLIST | {
+                v2_norm(u) for u in SourceMeta._OVERRIDES.values()
+            }
 
     total = 0
     skipped_non_v2 = 0
@@ -235,6 +258,29 @@ def main():
             except Exception as e:  # noqa: BLE001
                 print(f"   ✗ FAILED: {type(e).__name__}: {e}", file=sys.stderr)
                 failures.append((f"{mod_path}/{src.sub_entity}", repr(e)))
+                # Persist 4xx/5xx into scrape_errors so the admin UI can surface
+                # them as a Realtime toast. Best-effort: a logging failure here
+                # must never kill the scrape run.
+                if supabase_sink is not None:
+                    status = 0
+                    try:
+                        import requests as _r
+                        if isinstance(e, _r.exceptions.HTTPError) and e.response is not None:
+                            status = e.response.status_code
+                    except Exception:
+                        status = 0
+                    if 400 <= status < 600:
+                        try:
+                            supabase_sink.client.table("scrape_errors").insert({
+                                "region": src.region,
+                                "sub_entity": src.sub_entity,
+                                "source_page": src.source_page,
+                                "url_tried": src.source_url,
+                                "status_code": status,
+                                "error_text": f"{type(e).__name__}: {str(e)[:500]}",
+                            }).execute()
+                        except Exception as log_err:  # noqa: BLE001
+                            print(f"   (could not log scrape_error: {log_err})", file=sys.stderr)
             polite_sleep(1.0)
 
     if json_sink:
