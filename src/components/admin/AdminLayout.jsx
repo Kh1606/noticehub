@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { NavLink, Outlet, Link } from 'react-router-dom'
-import { LogOut, Shield, Database, History, Home, AlertTriangle, Activity } from 'lucide-react'
+import { LogOut, Shield, Database, History, Home, AlertTriangle, Activity, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../lib/auth.jsx'
 import { supabase } from '../../lib/supabase.js'
 import ScrapeErrorAlerts from './ScrapeErrorAlerts.jsx'
 
 export default function AdminLayout() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, forceReset } = useAuth()
   const [unresolvedCount, setUnresolvedCount] = useState(0)
 
   const refreshCount = useCallback(async () => {
@@ -68,6 +68,13 @@ export default function AdminLayout() {
         </NavItem>
 
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <button
+            onClick={forceReset}
+            title="페이지가 멈췄을 때 클릭하면 세션을 비우고 새로고침합니다"
+            style={{ ...navLinkStyle(false), border: 'none', textAlign: 'left' }}
+          >
+            <RefreshCw size={14} /> 세션 초기화
+          </button>
           <Link to="/" style={navLinkStyle(false)}>
             <span style={{ width: 14, display: 'inline-flex' }}>←</span> 사이트로
           </Link>
