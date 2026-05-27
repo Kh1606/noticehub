@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// base must match the GitHub Pages subpath: https://<user>.github.io/clt-plus2/
+// base must match the GitHub Pages subpath: https://<user>.github.io/noticehub/
 export default defineConfig({
-  base: '/clt-plus2/',
+  base: '/noticehub/',
   plugins: [react()],
   server: {
     port: 5173,
