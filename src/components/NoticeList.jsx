@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ExternalLink, Inbox } from 'lucide-react'
+import { ExternalLink, Inbox, SearchX } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { cutoffDateFor, periodConfig } from '../lib/periodFilter.js'
+import { highlight, splitTerms } from '../lib/searchHighlight.jsx'
 import NoticePlaceholder from './NoticePlaceholder.jsx'
 
 function formatDate(iso) {
@@ -112,8 +113,18 @@ const quickBtn = {
   cursor: 'pointer',
 }
 
-export default function NoticeList({ region, subEntity, period = 'all', onCount, onChangePeriod }) {
+export default function NoticeList({
+  region,
+  subEntity,
+  period = 'all',
+  searchTerm = '',
+  onCount,
+  onChangePeriod,
+}) {
   const [state, setState] = useState({ status: 'loading', items: [], error: null })
+  const trimmedSearch = (searchTerm || '').trim()
+  const isSearching = trimmedSearch.length > 0
+  const terms = isSearching ? splitTerms(trimmedSearch) : []
 
   useEffect(() => {
     let cancelled = false
@@ -121,9 +132,16 @@ export default function NoticeList({ region, subEntity, period = 'all', onCount,
 
     let q = supabase
       .from('notices_v2')
-      .select('notice_id,title,detail_url,posted_at,source_page,scraped_at')
+      .select('notice_id,title,detail_url,posted_at,source_page,sub_entity,scraped_at')
       .eq('region', region)
-      .eq('sub_entity', subEntity)
+
+    if (isSearching) {
+      // Region-wide search across all sub_entities; AND across multi-word terms.
+      for (const t of terms) q = q.ilike('title', `%${t}%`)
+    } else {
+      q = q.eq('sub_entity', subEntity)
+    }
+
     const cutoff = cutoffDateFor(period)
     if (cutoff) q = q.gte('posted_at', cutoff)
     q = q.order('posted_at', { ascending: false, nullsFirst: false }).limit(50)
@@ -140,7 +158,7 @@ export default function NoticeList({ region, subEntity, period = 'all', onCount,
     })
 
     return () => { cancelled = true }
-  }, [region, subEntity, period])
+  }, [region, subEntity, period, trimmedSearch])
 
   if (state.status === 'loading') return <SkeletonCards />
 
@@ -163,6 +181,39 @@ export default function NoticeList({ region, subEntity, period = 'all', onCount,
   }
 
   if (state.items.length === 0) {
+    // Search mode and no hits → friendlier "no results" box
+    if (isSearching) {
+      return (
+        <div
+          style={{
+            marginTop: 12,
+            padding: '28px 18px',
+            textAlign: 'center',
+            background: 'var(--bg-page, #F6F8FB)',
+            border: '1px dashed var(--border)',
+            borderRadius: 'var(--radius)',
+            color: 'var(--text-muted)',
+          }}
+        >
+          <div
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 36, height: 36, borderRadius: 999,
+              background: 'var(--bg-card)', marginBottom: 8,
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <SearchX size={16} />
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>
+            <b>{trimmedSearch}</b> 검색 결과가 없어요
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            기간을 더 넓히거나 짧은 검색어를 시도해보세요.
+          </div>
+        </div>
+      )
+    }
     // If the user is on 'all' there's genuinely no data — fall back to the
     // existing placeholder. Otherwise show the period-aware empty state
     // with quick-switch buttons.
@@ -210,20 +261,38 @@ export default function NoticeList({ region, subEntity, period = 'all', onCount,
               e.currentTarget.style.boxShadow = 'var(--shadow-sm)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--accent)',
-                  background: 'var(--accent-light)',
-                  padding: '2px 8px',
-                  borderRadius: 999,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {n.source_page}
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {isSearching && n.sub_entity && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: 'var(--text-secondary)',
+                      background: 'var(--bg-page, #F6F8FB)',
+                      border: '1px solid var(--border)',
+                      padding: '2px 7px',
+                      borderRadius: 999,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {n.sub_entity}
+                  </span>
+                )}
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'var(--accent)',
+                    background: 'var(--accent-light)',
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {n.source_page}
+                </span>
+              </div>
               {dateStr && (
                 <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                   {dateStr}
@@ -239,7 +308,7 @@ export default function NoticeList({ region, subEntity, period = 'all', onCount,
                 lineHeight: 1.4,
               }}
             >
-              {n.title}
+              {isSearching ? highlight(n.title, terms) : n.title}
             </div>
             <div
               style={{

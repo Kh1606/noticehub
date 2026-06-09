@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { X, MapPin } from 'lucide-react'
+import { X, MapPin, Search } from 'lucide-react'
 import regionsData from '../data/regions.json'
 import NoticeList from './NoticeList.jsx'
 import useRegionInventory from './useRegionInventory.js'
@@ -57,6 +57,19 @@ export default function RegionDetailPanel({
     setPeriod(key)
     writeStoredPeriod(key)
   }, [])
+
+  // Keyword search — debounced. Live input value vs the term that actually
+  // hits the DB query (debounced 250ms).
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 250)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+  // Reset the search when the region changes — searching in 경기도 should
+  // not leak over when the user jumps to 충청남도.
+  useEffect(() => { setSearchTerm('') }, [region])
+  const isSearching = debouncedSearch.trim().length > 0
 
   // Re-sync internal sub selection whenever the trigger updates region or sub.
   useEffect(() => {
@@ -174,7 +187,23 @@ export default function RegionDetailPanel({
         </button>
       </header>
 
-      {/* Sub-entity chips */}
+      {/* Search bar — keyword search across the entire region */}
+      <section
+        style={{
+          padding: '10px 20px 12px',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}
+      >
+        <SearchBar
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder={`${region ?? ''} 전체에서 검색…`}
+        />
+      </section>
+
+      {/* Sub-entity chips — hidden during search since results span all orgs */}
+      {!isSearching && (
       <section
         style={{
           padding: '12px 20px 12px',
@@ -205,6 +234,7 @@ export default function RegionDetailPanel({
           ))}
         </div>
       </section>
+      )}
 
       {/* Notices — with period filter */}
       <section
@@ -217,11 +247,13 @@ export default function RegionDetailPanel({
         }}
       >
         <SectionLabel
-          title="최근 공지사항"
+          title={isSearching ? '검색 결과' : '최근 공지사항'}
           subtitle={
-            selectedSub
-              ? `${periodConfig(period)?.label} · ${selectedSub}`
-              : periodConfig(period)?.label
+            isSearching
+              ? `${periodConfig(period)?.label} · ${region} 전체`
+              : selectedSub
+                ? `${periodConfig(period)?.label} · ${selectedSub}`
+                : periodConfig(period)?.label
           }
         />
 
@@ -265,11 +297,12 @@ export default function RegionDetailPanel({
             borderTop: '1px solid var(--border)',
           }}
         >
-          {region && selectedSub ? (
+          {region && (selectedSub || isSearching) ? (
             <NoticeList
               region={region}
               subEntity={selectedSub}
               period={period}
+              searchTerm={debouncedSearch}
               onChangePeriod={updatePeriod}
             />
           ) : (
@@ -280,6 +313,74 @@ export default function RegionDetailPanel({
         </div>
       </section>
     </aside>
+  )
+}
+
+function SearchBar({ value, onChange, placeholder }) {
+  const [focused, setFocused] = useState(false)
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '0 10px',
+        height: 38,
+        background: 'var(--bg-card)',
+        border: '1px solid ' + (focused ? 'var(--accent)' : 'var(--border)'),
+        borderRadius: 8,
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        boxShadow: focused ? '0 0 0 3px rgba(37, 99, 235, 0.12)' : 'none',
+      }}
+    >
+      <Search size={14} color="var(--text-muted)" />
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={e => {
+          // ESC inside the input clears it; don't bubble to the panel-close handler
+          if (e.key === 'Escape' && value) {
+            e.stopPropagation()
+            onChange('')
+          }
+        }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          border: 'none',
+          outline: 'none',
+          background: 'transparent',
+          fontSize: 13,
+          color: 'var(--text-primary)',
+        }}
+      />
+      {value && (
+        <button
+          onClick={() => onChange('')}
+          aria-label="검색어 지우기"
+          title="검색어 지우기"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 22,
+            height: 22,
+            borderRadius: 999,
+            background: 'var(--bg-hover)',
+            color: 'var(--text-secondary)',
+            border: 'none',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          <X size={12} />
+        </button>
+      )}
+    </div>
   )
 }
 
