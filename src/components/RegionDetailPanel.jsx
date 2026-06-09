@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { X, MapPin } from 'lucide-react'
 import regionsData from '../data/regions.json'
 import NoticeList from './NoticeList.jsx'
 import useRegionInventory from './useRegionInventory.js'
+import {
+  PERIODS,
+  readStoredPeriod,
+  writeStoredPeriod,
+  dateRangeLabel,
+  periodConfig,
+} from '../lib/periodFilter.js'
 
 /**
  * App-level shared right-side panel. Triggered by either an InventoryView
@@ -42,6 +49,14 @@ export default function RegionDetailPanel({
   }, [inv.byRegion, region])
 
   const [selectedSub, setSelectedSub] = useState(null)
+
+  // Period filter (1d / 3d / 1w / 1m / all) — persists across regions and
+  // browser reloads via localStorage.
+  const [period, setPeriod] = useState(readStoredPeriod)
+  const updatePeriod = useCallback((key) => {
+    setPeriod(key)
+    writeStoredPeriod(key)
+  }, [])
 
   // Re-sync internal sub selection whenever the trigger updates region or sub.
   useEffect(() => {
@@ -91,7 +106,7 @@ export default function RegionDetailPanel({
       {/* Header */}
       <header
         style={{
-          padding: '18px 22px 14px',
+          padding: '16px 20px 12px',
           borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'flex-start',
@@ -162,7 +177,7 @@ export default function RegionDetailPanel({
       {/* Sub-entity chips */}
       <section
         style={{
-          padding: '14px 22px 14px',
+          padding: '12px 20px 12px',
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
           maxHeight: 260,
@@ -191,20 +206,72 @@ export default function RegionDetailPanel({
         </div>
       </section>
 
-      {/* Notices */}
+      {/* Notices — with period filter */}
       <section
         style={{
           flex: 1,
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
-          padding: '14px 22px 20px',
+          padding: '12px 20px 18px',
         }}
       >
-        <SectionLabel title="최근 공지사항" subtitle={selectedSub ?? undefined} />
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', marginTop: 10 }}>
+        <SectionLabel
+          title="최근 공지사항"
+          subtitle={
+            selectedSub
+              ? `${periodConfig(period)?.label} · ${selectedSub}`
+              : periodConfig(period)?.label
+          }
+        />
+
+        {/* Period chip group */}
+        <div
+          style={{
+            marginTop: 10,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 6,
+            alignItems: 'center',
+          }}
+        >
+          {PERIODS.map(p => (
+            <PeriodChip
+              key={p.key}
+              label={p.label}
+              active={p.key === period}
+              onClick={() => updatePeriod(p.key)}
+            />
+          ))}
+        </div>
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {dateRangeLabel(period)}
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: '1px solid var(--border)',
+          }}
+        >
           {region && selectedSub ? (
-            <NoticeList region={region} subEntity={selectedSub} />
+            <NoticeList
+              region={region}
+              subEntity={selectedSub}
+              period={period}
+              onChangePeriod={updatePeriod}
+            />
           ) : (
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
               기관을 선택하세요
@@ -213,6 +280,40 @@ export default function RegionDetailPanel({
         </div>
       </section>
     </aside>
+  )
+}
+
+function PeriodChip({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '5px 12px',
+        fontSize: 12,
+        fontWeight: 600,
+        borderRadius: 999,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        background: active ? 'var(--accent)' : 'var(--bg-card)',
+        color: active ? '#fff' : 'var(--text-secondary)',
+        border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'),
+        transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+      }}
+      onMouseEnter={e => {
+        if (!active) {
+          e.currentTarget.style.background = 'var(--bg-hover, #F3F4F6)'
+          e.currentTarget.style.color = 'var(--text-primary)'
+        }
+      }}
+      onMouseLeave={e => {
+        if (!active) {
+          e.currentTarget.style.background = 'var(--bg-card)'
+          e.currentTarget.style.color = 'var(--text-secondary)'
+        }
+      }}
+    >
+      {label}
+    </button>
   )
 }
 

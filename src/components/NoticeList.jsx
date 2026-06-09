@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Inbox } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
+import { cutoffDateFor, periodConfig } from '../lib/periodFilter.js'
 import NoticePlaceholder from './NoticePlaceholder.jsx'
 
 function formatDate(iso) {
@@ -50,33 +51,96 @@ function SkeletonCards() {
   )
 }
 
-export default function NoticeList({ region, subEntity, onCount }) {
+function EmptyForPeriod({ period, onChangePeriod }) {
+  // Quick-switch shortcuts: prefer the next-longer window, then 전체 as fallback.
+  const cfg = periodConfig(period)
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: '28px 18px',
+        textAlign: 'center',
+        background: 'var(--bg-page, #F6F8FB)',
+        border: '1px dashed var(--border)',
+        borderRadius: 'var(--radius)',
+        color: 'var(--text-muted)',
+      }}
+    >
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 36,
+          height: 36,
+          borderRadius: 999,
+          background: 'var(--bg-card)',
+          marginBottom: 8,
+          color: 'var(--text-secondary)',
+        }}
+      >
+        <Inbox size={16} />
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>
+        최근 <b>{cfg?.label}</b>에 해당하는 공지가 없어요
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+        더 길게 보면 표시될 수 있어요.
+      </div>
+      <div style={{ display: 'inline-flex', gap: 8 }}>
+        {period !== '1m' && (
+          <button onClick={() => onChangePeriod?.('1m')} style={quickBtn}>
+            1개월 보기
+          </button>
+        )}
+        <button onClick={() => onChangePeriod?.('all')} style={quickBtn}>
+          전체 보기
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const quickBtn = {
+  padding: '6px 12px',
+  fontSize: 12,
+  fontWeight: 600,
+  color: 'var(--accent)',
+  background: 'var(--bg-card)',
+  border: '1px solid var(--accent-light, #DBEAFE)',
+  borderRadius: 6,
+  cursor: 'pointer',
+}
+
+export default function NoticeList({ region, subEntity, period = 'all', onCount, onChangePeriod }) {
   const [state, setState] = useState({ status: 'loading', items: [], error: null })
 
   useEffect(() => {
     let cancelled = false
     setState({ status: 'loading', items: [], error: null })
 
-    supabase
+    let q = supabase
       .from('notices_v2')
       .select('notice_id,title,detail_url,posted_at,source_page,scraped_at')
       .eq('region', region)
       .eq('sub_entity', subEntity)
-      .order('posted_at', { ascending: false, nullsFirst: false })
-      .limit(50)
-      .then(({ data, error }) => {
-        if (cancelled) return
-        if (error) {
-          setState({ status: 'error', items: [], error: error.message })
-        } else {
-          const items = data || []
-          setState({ status: 'ok', items, error: null })
-          onCount?.(items.length)
-        }
-      })
+    const cutoff = cutoffDateFor(period)
+    if (cutoff) q = q.gte('posted_at', cutoff)
+    q = q.order('posted_at', { ascending: false, nullsFirst: false }).limit(50)
+
+    q.then(({ data, error }) => {
+      if (cancelled) return
+      if (error) {
+        setState({ status: 'error', items: [], error: error.message })
+      } else {
+        const items = data || []
+        setState({ status: 'ok', items, error: null })
+        onCount?.(items.length)
+      }
+    })
 
     return () => { cancelled = true }
-  }, [region, subEntity])
+  }, [region, subEntity, period])
 
   if (state.status === 'loading') return <SkeletonCards />
 
@@ -98,7 +162,13 @@ export default function NoticeList({ region, subEntity, onCount }) {
     )
   }
 
-  if (state.items.length === 0) return <NoticePlaceholder />
+  if (state.items.length === 0) {
+    // If the user is on 'all' there's genuinely no data — fall back to the
+    // existing placeholder. Otherwise show the period-aware empty state
+    // with quick-switch buttons.
+    if (period === 'all') return <NoticePlaceholder />
+    return <EmptyForPeriod period={period} onChangePeriod={onChangePeriod} />
+  }
 
   return (
     <div
@@ -126,15 +196,18 @@ export default function NoticeList({ region, subEntity, onCount }) {
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius)',
               boxShadow: 'var(--shadow-sm)',
-              transition: 'transform 0.15s ease, border-color 0.15s',
+              transition: 'transform 0.15s ease, border-color 0.15s, box-shadow 0.15s',
+              textDecoration: 'none',
             }}
             onMouseEnter={e => {
               e.currentTarget.style.transform = 'translateY(-2px)'
               e.currentTarget.style.borderColor = 'var(--accent)'
+              e.currentTarget.style.boxShadow = 'var(--shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
             }}
             onMouseLeave={e => {
               e.currentTarget.style.transform = 'translateY(0)'
               e.currentTarget.style.borderColor = 'var(--border)'
+              e.currentTarget.style.boxShadow = 'var(--shadow-sm)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
