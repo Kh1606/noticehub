@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { X, ExternalLink, Paperclip, Download, FileText, Image as ImageIcon, FileArchive, AlertCircle } from 'lucide-react'
+import { X, ExternalLink, Paperclip, Download, FileText, Image as ImageIcon, FileArchive, AlertCircle, AlignLeft } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 
 /**
@@ -13,13 +13,15 @@ import { supabase } from '../lib/supabase.js'
  * Closes on: X button, ESC key, backdrop click.
  */
 export default function NoticeDetailModal({ notice, onClose }) {
-  const [state, setState] = useState({ status: 'loading', attachments: [], error: null })
+  const [state, setState] = useState({
+    status: 'loading', attachments: [], body: '', error: null,
+  })
 
-  // Load attachments via Edge Function on mount
+  // Load body + attachments via Edge Function on mount
   useEffect(() => {
     if (!notice?.notice_id || !notice?.detail_url) return
     let cancelled = false
-    setState({ status: 'loading', attachments: [], error: null })
+    setState({ status: 'loading', attachments: [], body: '', error: null })
 
     supabase.functions
       .invoke('fetch-notice-detail', {
@@ -28,16 +30,21 @@ export default function NoticeDetailModal({ notice, onClose }) {
       .then(({ data, error }) => {
         if (cancelled) return
         if (error) {
-          setState({ status: 'error', attachments: [], error: error.message || String(error) })
+          setState({ status: 'error', attachments: [], body: '', error: error.message || String(error) })
         } else if (data?.status === 'error') {
-          setState({ status: 'error', attachments: [], error: data.error_text || '정보를 불러올 수 없어요' })
+          setState({ status: 'error', attachments: [], body: '', error: data.error_text || '정보를 불러올 수 없어요' })
         } else {
-          setState({ status: 'ok', attachments: data?.attachments || [], error: null })
+          setState({
+            status: 'ok',
+            attachments: data?.attachments || [],
+            body: data?.body_text || '',
+            error: null,
+          })
         }
       })
       .catch(err => {
         if (cancelled) return
-        setState({ status: 'error', attachments: [], error: err?.message || String(err) })
+        setState({ status: 'error', attachments: [], body: '', error: err?.message || String(err) })
       })
 
     return () => { cancelled = true }
@@ -159,7 +166,7 @@ export default function NoticeDetailModal({ notice, onClose }) {
           </button>
         </header>
 
-        {/* Body — attachments only for v1 */}
+        {/* Scrollable content area: body + attachments */}
         <section
           style={{
             flex: 1,
@@ -168,29 +175,42 @@ export default function NoticeDetailModal({ notice, onClose }) {
             padding: '18px 22px',
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 12,
-              fontWeight: 700,
-              color: 'var(--text-secondary)',
-              letterSpacing: 0.4,
-              textTransform: 'uppercase',
-              marginBottom: 10,
-            }}
-          >
-            <Paperclip size={13} />
-            <span>
-              첨부파일
-              {state.status === 'ok' && state.attachments.length > 0 && (
-                <span style={{ marginLeft: 4, color: 'var(--accent)' }}>
-                  ({state.attachments.length}건)
-                </span>
-              )}
-            </span>
-          </div>
+          {/* Body section — hidden when empty */}
+          {state.status === 'ok' && state.body && (
+            <div style={{ marginBottom: 22 }}>
+              <SectionLabel icon={<AlignLeft size={13} />} title="본문" />
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: '14px 16px',
+                  background: 'var(--bg-page, #F6F8FB)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  lineHeight: 1.7,
+                  color: 'var(--text-primary)',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'keep-all',
+                  maxHeight: 320,
+                  overflowY: 'auto',
+                }}
+              >
+                {state.body}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                ※ 본문 일부만 표시됩니다. 전체 내용은 <b>원문 보기</b>에서 확인하세요.
+              </div>
+            </div>
+          )}
+
+          {/* Attachments */}
+          <SectionLabel
+            icon={<Paperclip size={13} />}
+            title="첨부파일"
+            count={state.status === 'ok' && state.attachments.length > 0 ? state.attachments.length : undefined}
+          />
+
+          <div style={{ marginTop: 10 }}>
 
           {state.status === 'loading' && <SkeletonRows />}
 
@@ -224,6 +244,7 @@ export default function NoticeDetailModal({ notice, onClose }) {
               ))}
             </div>
           )}
+          </div>
         </section>
 
         {/* Footer */}
@@ -250,6 +271,33 @@ export default function NoticeDetailModal({ notice, onClose }) {
           </a>
         </footer>
       </div>
+    </div>
+  )
+}
+
+function SectionLabel({ icon, title, count }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 12,
+        fontWeight: 700,
+        color: 'var(--text-secondary)',
+        letterSpacing: 0.4,
+        textTransform: 'uppercase',
+      }}
+    >
+      {icon}
+      <span>
+        {title}
+        {count != null && (
+          <span style={{ marginLeft: 4, color: 'var(--accent)' }}>
+            ({count}건)
+          </span>
+        )}
+      </span>
     </div>
   )
 }
