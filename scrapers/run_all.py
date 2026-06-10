@@ -369,6 +369,20 @@ def main():
         except Exception as e:  # noqa: BLE001
             print(f"(could not close scrape_runs: {e})", file=sys.stderr)
 
+    # ─── Pre-warm notice_details for anything we don't have cached yet ───
+    # Best-effort: a warmer failure must not change the scrape exit code.
+    if supabase_sink is not None and total > 0:
+        try:
+            from scrapers.warm_notice_details import warm_missing
+            print("\nWarming notice_details cache for newly-scraped notices…")
+            warm_missing(supabase_sink.client, only=args.only, workers=8)
+        except Exception as e:  # noqa: BLE001
+            print(
+                f"(warmer failed: {type(e).__name__}: {e}; "
+                "popups will fall back to the Edge Function)",
+                file=sys.stderr,
+            )
+
     if failures:
         print(f"Failures: {len(failures)}")
         for path, err in failures:

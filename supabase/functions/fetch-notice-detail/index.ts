@@ -64,8 +64,29 @@ const BODY_SELECTORS = [
 ]
 
 // Stripped before extraction (these never contain real body content).
-const STRIP_TAGS = 'script,style,noscript,iframe,nav,header,footer,aside'
-const STRIP_CLASS_RE = /(?:^|\s)(nav|menu|header|footer|sidebar|breadcrumb|gnb|lnb|skip|util|topmenu|leftmenu|btn_area|paging|search_area)(?:\s|$|_|-)/i
+// <form> added so password dialogs disappear with the rest of the chrome.
+const STRIP_TAGS = 'script,style,noscript,iframe,nav,header,footer,aside,form'
+const STRIP_CLASS_RE = /(?:^|\s|_|-)(nav|menu|header|footer|sidebar|breadcrumb|gnb|lnb|skip|util|topmenu|leftmenu|btn_area|paging|search_area|pwd|password|confirm|cancel|prev|next|list_btn|board_info|board_list|copyright|list_top|list_bot|list_foot|list_head|sub_top|popup|dialog)(?:\s|$|_|-)/i
+
+// Tail markers — cut body at the first occurrence.
+const TAIL_MARKERS = [
+  '비밀번호 확인',
+  '비밀번호확인',
+  '글 작성 시 입력한',
+  '자유이용이 불가합니다',
+  '저작권 정책',
+  '공공누리',
+]
+
+// Lines whose stripped text exactly matches one of these are dropped.
+const LABEL_LINES = new Set([
+  '제목', '작성자', '작성일', '조회수', '첨부파일',
+  '내용', '바로보기', '담당부서', '부서', '담당자', '작성부서',
+  '목록', '이전글', '다음글',
+])
+
+// A line is "real content" if it's long OR contains these markers.
+const CONTENT_KEYWORD_RE = /공고|안내|모집|사업|개최|시행|선정|채용|입찰|계약|발주|선발|관련|아래와/
 
 interface Attachment {
   name: string
@@ -151,11 +172,65 @@ function extractAttachments($: cheerio.CheerioAPI, baseUrl: string): Attachment[
   return out
 }
 
+// Find a th/dt cell whose text equals "내용" / "본문" and return its sibling text.
+// Korean gov sites almost universally use a th-td or dt-dd layout for detail
+// pages — this gets us the actual body in one shot, ahead of generic selectors.
+function findLabeledContent($: cheerio.CheerioAPI): string {
+  for (const label of ['내용', '본문', '내 용']) {
+    const target = label.replace(/\s+/g, '')
+    const cell = $('th, dt').filter((_, el) => {
+      const t = ($(el).text() || '').replace(/\s+/g, '').trim()
+      return t === target
+    }).first()
+    if (cell.length === 0) continue
+    const sibling = cell.next('td, dd')
+    if (sibling.length === 0) continue
+    const t = blockText($, sibling.get(0))
+    if (t.length >= 80) return t
+  }
+  return ''
+}
+
+function cleanBody(text: string): string {
+  let cleaned = text
+  for (const marker of TAIL_MARKERS) {
+    const idx = cleaned.indexOf(marker)
+    if (idx >= 0) cleaned = cleaned.slice(0, idx).replace(/\s+$/, '')
+  }
+  // Cut on bottom-nav blocks like "\n목록\n…\n다음글…"
+  cleaned = cleaned.replace(/\n목록\b[\s\S]*?(?:\n다음글[\s\S]*?(?=\n\n|$)|$)/g, '')
+  cleaned = cleaned.replace(/\n이전글\b[\s\S]*?(?:\n다음글[\s\S]*?(?=\n\n|$)|$)/g, '')
+
+  const lines = cleaned.split('\n')
+
+  // Drop leading "menu-like" lines until we hit something real.
+  let start = lines.length
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+    if (line.length >= 30 || CONTENT_KEYWORD_RE.test(line)) {
+      start = i
+      break
+    }
+  }
+  const trimmed = lines.slice(start)
+
+  // Drop pure-label lines anywhere.
+  const out: string[] = []
+  for (const raw of trimmed) {
+    if (LABEL_LINES.has(raw.trim())) continue
+    out.push(raw)
+  }
+
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 function extractBody($: cheerio.CheerioAPI): string {
-  // Clone the body so strips don't break attachment extraction (which
-  // also walks the DOM). cheerio doesn't have a deep-clone we can use
-  // in place; instead we strip elements and just be careful — we run
-  // attachments FIRST, then body, then drop the doc.
+  // 1) Try the labeled-content pattern BEFORE stripping chrome (the label
+  //    cell may live under a parent whose class matches our strip regex).
+  const labeled = findLabeledContent($)
+
+  // 2) Strip chrome (nav/footer/forms/etc.) from the rest of the DOM.
   $(STRIP_TAGS).remove()
   $('*').each((_, el) => {
     const tag = el.tagName?.toLowerCase()
@@ -164,30 +239,36 @@ function extractBody($: cheerio.CheerioAPI): string {
     if (STRIP_CLASS_RE.test(cls)) $(el).remove()
   })
 
-  // Try each selector in order; first one with enough text wins.
+  let best = labeled
+
+  // 3) Walk known content selectors; keep whichever beats current best.
   for (const sel of BODY_SELECTORS) {
     const $blocks = $(sel)
     if ($blocks.length === 0) continue
-    // Use the largest one if there are several
-    let best = ''
     $blocks.each((_, el) => {
       const t = blockText($, el)
       if (t.length > best.length) best = t
     })
-    if (best.length >= 80) return clipBody(best)
   }
 
-  // Fallback — largest block under <body>.
-  let bestText = ''
-  $('body *').each((_, el) => {
-    const tag = el.tagName?.toLowerCase()
-    // Skip leaf-ish inline elements; we want containers
-    if (!tag || ['span', 'a', 'img', 'br', 'b', 'i', 'em', 'strong'].includes(tag)) return
-    const t = blockText($, el)
-    if (t.length > bestText.length) bestText = t
-  })
-  if (bestText.length >= 80) return clipBody(bestText)
-  return ''
+  // 4) Fallback — largest container block under <body>.
+  if (!best) {
+    let largest = ''
+    $('body *').each((_, el) => {
+      const tag = el.tagName?.toLowerCase()
+      if (!tag || ['span', 'a', 'img', 'br', 'b', 'i', 'em', 'strong'].includes(tag)) return
+      const t = blockText($, el)
+      if (t.length > largest.length) largest = t
+    })
+    best = largest
+  }
+
+  if (!best) return ''
+
+  // 5) Post-process: trim nav, drop labels, collapse blanks.
+  let cleaned = cleanBody(best)
+  if (cleaned.length < 50) cleaned = best  // over-cleaned; prefer noisy over empty
+  return clipBody(cleaned)
 }
 
 function blockText($: cheerio.CheerioAPI, el: any): string {
