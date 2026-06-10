@@ -92,6 +92,7 @@ interface Attachment {
   name: string
   url: string
   ext: string
+  js_only?: boolean
 }
 
 function pickFilename($el: cheerio.Cheerio<any>, abs: string): string {
@@ -134,39 +135,69 @@ function pickFilename($el: cheerio.Cheerio<any>, abs: string): string {
   return abs
 }
 
-function extractAttachments($: cheerio.CheerioAPI, baseUrl: string): Attachment[] {
+const JS_DOWNLOAD_RE = /(?:fn|f|file)(?:Down|Download|Atch|AtchFile|AttachFile|FileDown|FileDownload)\b|fileDown\b|downloadFile\b|atchFileDown\b/i
+
+function pickNameFromText($el: cheerio.Cheerio<any>): string {
+  let text = ($el.text() || '').replace(/\s+/g, ' ').trim()
+  text = text.replace(/^[\[\(](?:pdf|hwp|hwpx|docx?|xlsx?|pptx?|zip)[\]\)]\s*/i, '')
+  if (text && text.length < 200 && !GENERIC_NAMES.has(text)) return text
+  const title = ($el.attr('title') || '').trim()
+  if (title && title.length < 200 && !GENERIC_NAMES.has(title)) return title
+  return ''
+}
+
+function extractAttachments(
+  $: cheerio.CheerioAPI,
+  baseUrl: string,
+  sourceDetailUrl: string,
+): Attachment[] {
   const seen = new Set<string>()
   const out: Attachment[] = []
 
-  $('a[href]').each((_, el) => {
+  $('a').each((_, el) => {
     const $el = $(el)
     const href = ($el.attr('href') || '').trim()
-    if (!href || href.startsWith('javascript:') || href.startsWith('#')) return
-
-    // Match in either the URL OR the visible text (some download links hide
-    // the extension in JS but display "공고문.pdf" as the label).
+    const onclick = ($el.attr('onclick') || '').trim()
     const text = ($el.text() || '').trim()
     const title = ($el.attr('title') || '').trim()
-    const hrefHasExt = FILE_EXT_RE.test(href)
-    const textHasExt = FILE_EXT_RE.test(text) || FILE_EXT_RE.test(title)
-    if (!hrefHasExt && !textHasExt) return
 
-    let abs: string
-    try {
-      abs = new URL(href, baseUrl).toString()
-    } catch {
+    const hrefHasExt = !!href && FILE_EXT_RE.test(href)
+    const hrefIsReal = !!href && !href.startsWith('javascript:') && !href.startsWith('#')
+    const textHasExt = FILE_EXT_RE.test(text) || FILE_EXT_RE.test(title)
+    const onclickLooksLikeDownload = !!onclick && JS_DOWNLOAD_RE.test(onclick)
+
+    // Case A — real href to a file
+    if (hrefIsReal && (hrefHasExt || textHasExt)) {
+      let abs: string
+      try {
+        abs = new URL(href, baseUrl).toString()
+      } catch {
+        return
+      }
+      if (seen.has(abs)) return
+      seen.add(abs)
+      const name = pickFilename($el, abs)
+      const m1 = abs.match(FILE_EXT_RE)
+      const m2 = name.match(FILE_EXT_RE)
+      const ext = (m1?.[1] || m2?.[1] || '').toLowerCase()
+      out.push({ name, url: abs, ext })
       return
     }
-    if (seen.has(abs)) return
-    seen.add(abs)
 
-    const name = pickFilename($el, abs)
-    // Determine extension: URL first, then name
-    const m1 = abs.match(FILE_EXT_RE)
-    const m2 = name.match(FILE_EXT_RE)
-    const ext = (m1?.[1] || m2?.[1] || '').toLowerCase()
-
-    out.push({ name, url: abs, ext })
+    // Case B — JavaScript download handler. We can't trigger the actual
+    // download, but we know the file name. Surface as a hint that opens
+    // the source detail page so the user can click through there.
+    if ((onclickLooksLikeDownload || !!onclick) && textHasExt) {
+      const name = pickNameFromText($el)
+      if (!name) return
+      const key = 'JS::' + name
+      if (seen.has(key)) return
+      seen.add(key)
+      const m = name.match(FILE_EXT_RE)
+      const ext = (m?.[1] || '').toLowerCase()
+      out.push({ name, url: sourceDetailUrl, ext, js_only: true } as Attachment)
+      return
+    }
   })
 
   return out
@@ -407,7 +438,7 @@ serve(async (req: Request) => {
       // IMPORTANT: extract attachments BEFORE extractBody, since the
       // latter strips DOM elements as part of its cleanup pass.
       const $ = cheerio.load(html)
-      attachments = extractAttachments($, detailUrl)
+      attachments = extractAttachments($, detailUrl, detailUrl)
       bodyText = extractBody($)
     }
   } catch (e) {

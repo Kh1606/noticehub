@@ -37,6 +37,11 @@ except ImportError:
     pass
 
 from scrapers._helpers.notice_detail_extract import extract_detail
+# `ssl_get` mounts a legacy SSL adapter that handles handshake failures,
+# weak ciphers, and missing intermediate certs commonly seen on Korean gov
+# sites (e.g. yongin.go.kr / gm.go.kr / gmcc.co.kr). We try a normal
+# requests.get first; on TLS-style failure we retry through ssl_get.
+from scrapers.base import ssl_get
 
 PAGE = 1000
 TIMEOUT = 20
@@ -103,27 +108,47 @@ def decode_html(resp: requests.Response) -> str:
     return resp.text
 
 
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+}
+
+
+def _fetch_html(url: str) -> requests.Response:
+    """Fetch with a normal requests session first; fall back to ssl_get on
+    TLS/handshake-style failures so we can reach Korean gov sites that
+    serve incomplete cert chains or only legacy ciphers (용인시청, 광명시,
+    광주도시공사, etc.)."""
+    try:
+        r = requests.get(
+            url,
+            headers=DEFAULT_HEADERS,
+            timeout=TIMEOUT,
+            allow_redirects=True,
+            verify=False,
+        )
+        return r
+    except requests.exceptions.SSLError:
+        return ssl_get(url, headers=DEFAULT_HEADERS)
+    except requests.exceptions.ConnectionError as e:
+        # Some sites raise ConnectionError on TLS-handshake failure too.
+        if "ssl" in str(e).lower() or "handshake" in str(e).lower() or "tls" in str(e).lower():
+            return ssl_get(url, headers=DEFAULT_HEADERS)
+        raise
+
+
 def warm_one(notice: dict[str, Any]) -> dict[str, Any]:
     """Fetch + extract for one notice. Returns a result dict for the caller to upsert."""
     detail_url = notice["detail_url"]
     notice_id = notice["notice_id"]
     t0 = time.time()
     try:
-        r = requests.get(
-            detail_url,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/126.0.0.0 Safari/537.36"
-                ),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-            },
-            timeout=TIMEOUT,
-            allow_redirects=True,
-            verify=False,  # many Korean gov sites have stale TLS chains
-        )
+        r = _fetch_html(detail_url)
         if not r.ok:
             return {
                 "notice_id": notice_id,

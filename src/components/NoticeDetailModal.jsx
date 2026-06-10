@@ -12,14 +12,27 @@ import { supabase } from '../lib/supabase.js'
  *
  * Closes on: X button, ESC key, backdrop click.
  */
+// Sources whose "detail_url" is actually a homepage entry, not a notice
+// detail page. The popup can't extract meaningful body/attachments from
+// these — we skip the Edge Function call and show a small explainer.
+const HOMEPAGE_PAGES = new Set(['메인페이지'])
+
 export default function NoticeDetailModal({ notice, onClose }) {
   const [state, setState] = useState({
     status: 'loading', attachments: [], body: '', error: null,
   })
 
+  const isHomepageLink = !!notice && HOMEPAGE_PAGES.has(notice.source_page || '')
+
   // Load body + attachments via Edge Function on mount
   useEffect(() => {
     if (!notice?.notice_id || !notice?.detail_url) return
+    // Homepage-link sources have nothing to extract — short-circuit so we
+    // don't burn an Edge Function call and don't show "정보를 불러올 수 없어요".
+    if (HOMEPAGE_PAGES.has(notice.source_page || '')) {
+      setState({ status: 'homepage', attachments: [], body: '', error: null })
+      return
+    }
     let cancelled = false
     setState({ status: 'loading', attachments: [], body: '', error: null })
 
@@ -175,6 +188,31 @@ export default function NoticeDetailModal({ notice, onClose }) {
             padding: '18px 22px',
           }}
         >
+          {/* Homepage-link short-circuit — these aren't real detail pages */}
+          {state.status === 'homepage' && (
+            <div
+              style={{
+                padding: '24px 18px',
+                textAlign: 'center',
+                background: 'var(--bg-page, #F6F8FB)',
+                border: '1px dashed var(--border)',
+                borderRadius: 8,
+                color: 'var(--text-secondary)',
+                fontSize: 13,
+                lineHeight: 1.6,
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                이 항목은 기관 사이트의 홈페이지 링크입니다.
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                개별 공지 상세가 아니므로 본문 / 첨부파일은 제공되지 않아요.
+                <br />
+                아래 <b>원문 보기</b>로 이동해 직접 확인해주세요.
+              </div>
+            </div>
+          )}
+
           {/* Body section — hidden when empty */}
           {state.status === 'ok' && state.body && (
             <div style={{ marginBottom: 22 }}>
@@ -203,7 +241,9 @@ export default function NoticeDetailModal({ notice, onClose }) {
             </div>
           )}
 
-          {/* Attachments */}
+          {/* Attachments — hidden entirely when this is a homepage link */}
+          {state.status !== 'homepage' && (
+          <>
           <SectionLabel
             icon={<Paperclip size={13} />}
             title="첨부파일"
@@ -245,6 +285,8 @@ export default function NoticeDetailModal({ notice, onClose }) {
             </div>
           )}
           </div>
+          </>
+          )}
         </section>
 
         {/* Footer */}
@@ -324,32 +366,35 @@ function MetaChip({ children, color }) {
 
 function AttachmentRow({ att }) {
   const Icon = iconForExt(att.ext)
+  const jsOnly = !!att.js_only
   return (
     <a
       href={att.url}
       target="_blank"
       rel="noopener noreferrer"
-      download={att.name}
+      download={jsOnly ? undefined : att.name}
+      title={jsOnly ? `${att.name} — 원문에서 다운로드` : att.name}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 12,
         padding: '10px 12px',
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
+        background: jsOnly ? 'var(--bg-page, #F6F8FB)' : 'var(--bg-card)',
+        border: '1px solid ' + (jsOnly ? 'var(--border)' : 'var(--border)'),
         borderRadius: 8,
         textDecoration: 'none',
         color: 'var(--text-primary)',
         transition: 'border-color 0.15s, background 0.15s, transform 0.12s',
+        opacity: jsOnly ? 0.92 : 1,
       }}
       onMouseEnter={e => {
         e.currentTarget.style.borderColor = 'var(--accent)'
-        e.currentTarget.style.background = 'var(--accent-light, #EFF6FF)'
+        if (!jsOnly) e.currentTarget.style.background = 'var(--accent-light, #EFF6FF)'
         e.currentTarget.style.transform = 'translateY(-1px)'
       }}
       onMouseLeave={e => {
         e.currentTarget.style.borderColor = 'var(--border)'
-        e.currentTarget.style.background = 'var(--bg-card)'
+        e.currentTarget.style.background = jsOnly ? 'var(--bg-page, #F6F8FB)' : 'var(--bg-card)'
         e.currentTarget.style.transform = 'translateY(0)'
       }}
     >
@@ -364,6 +409,7 @@ function AttachmentRow({ att }) {
           background: extColor(att.ext).bg,
           color: extColor(att.ext).fg,
           flexShrink: 0,
+          opacity: jsOnly ? 0.8 : 1,
         }}
       >
         <Icon size={15} />
@@ -376,18 +422,35 @@ function AttachmentRow({ att }) {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            color: jsOnly ? 'var(--text-secondary)' : 'var(--text-primary)',
           }}
           title={att.name}
         >
           {att.name}
         </div>
-        {att.ext && (
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            {att.ext}
-          </div>
-        )}
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 0.4, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {att.ext && <span style={{ textTransform: 'uppercase' }}>{att.ext}</span>}
+          {jsOnly && (
+            <span
+              style={{
+                padding: '1px 6px',
+                background: '#FEF3C7',
+                color: '#92400E',
+                borderRadius: 999,
+                fontWeight: 700,
+                fontSize: 9,
+              }}
+            >
+              원문에서 다운로드
+            </span>
+          )}
+        </div>
       </div>
-      <Download size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+      {jsOnly ? (
+        <ExternalLink size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+      ) : (
+        <Download size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+      )}
     </a>
   )
 }

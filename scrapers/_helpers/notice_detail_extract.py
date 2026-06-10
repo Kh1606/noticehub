@@ -129,34 +129,92 @@ def _pick_filename(a: Tag, abs_url: str) -> str:
     return abs_url
 
 
-def extract_attachments(soup: BeautifulSoup, base_url: str) -> list[dict]:
+def _pick_name_from_text(a: Tag) -> str:
+    """Pick a clean display name from anchor text/title, with JS-attach handling."""
+    text = re.sub(r"\s+", " ", a.get_text() or "").strip()
+    text = re.sub(
+        r"^[\[(](?:pdf|hwp|hwpx|docx?|xlsx?|pptx?|zip)[\])]\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if text and len(text) < 200 and text not in GENERIC_NAMES:
+        return text
+    title = (a.get("title") or "").strip()
+    if title and len(title) < 200 and title not in GENERIC_NAMES:
+        return title
+    return ""
+
+
+def extract_attachments(soup: BeautifulSoup, base_url: str, *, source_detail_url: str | None = None) -> list[dict]:
+    """Extract attachment-like elements.
+
+    Returns a list of dicts:
+      { name, url, ext, js_only? }
+    where `js_only: True` indicates the anchor uses a JavaScript download
+    handler (onclick) instead of a real href — i.e. we can't actually
+    download the file, but we know its name. Modal renders these as a
+    "원문에서 다운로드" hint row pointing at the source detail page.
+    """
     seen: set[str] = set()
     out: list[dict] = []
-    for a in soup.find_all("a", href=True):
+    for a in soup.find_all("a"):
         href = (a.get("href") or "").strip()
-        if not href or href.startswith("javascript:") or href.startswith("#"):
-            continue
-
+        onclick = (a.get("onclick") or "").strip()
         text = (a.get_text() or "").strip()
         title = (a.get("title") or "").strip()
-        href_has_ext = bool(FILE_EXT_RE.search(href))
+
+        # Decide whether this anchor LOOKS like an attachment.
+        href_has_ext = bool(href and FILE_EXT_RE.search(href))
+        href_is_real = bool(href) and not (
+            href.startswith("javascript:") or href.startswith("#") or href == ""
+        )
         text_has_ext = bool(FILE_EXT_RE.search(text) or FILE_EXT_RE.search(title))
-        if not (href_has_ext or text_has_ext):
+        onclick_looks_like_download = bool(
+            onclick and re.search(
+                r"(?:fn|f|file)(?:Down|Download|Atch|AtchFile|AttachFile|FileDown|FileDownload)\b|fileDown\b|downloadFile\b|atchFileDown\b",
+                onclick,
+                re.IGNORECASE,
+            )
+        )
+
+        # Case A — real href to a file: download works as-is.
+        if href_is_real and (href_has_ext or text_has_ext):
+            try:
+                abs_url = urljoin(base_url, href)
+            except Exception:
+                continue
+            if abs_url in seen:
+                continue
+            seen.add(abs_url)
+            name = _pick_filename(a, abs_url)
+            m1 = FILE_EXT_RE.search(abs_url)
+            m2 = FILE_EXT_RE.search(name)
+            ext = (m1.group(1) if m1 else (m2.group(1) if m2 else "")).lower()
+            out.append({"name": name, "url": abs_url, "ext": ext})
             continue
 
-        try:
-            abs_url = urljoin(base_url, href)
-        except Exception:
+        # Case B — JS-driven download (onclick handler + file extension visible):
+        # we can't actually download, but we know the name. Surface as a hint.
+        if (onclick_looks_like_download or onclick) and text_has_ext:
+            name = _pick_name_from_text(a)
+            if not name:
+                continue
+            # Dedupe by visible name (no URL we trust)
+            dedupe_key = "JS::" + name
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            m = FILE_EXT_RE.search(name)
+            ext = (m.group(1) if m else "").lower()
+            out.append({
+                "name": name,
+                "url": source_detail_url or base_url,  # opens the detail page
+                "ext": ext,
+                "js_only": True,
+            })
             continue
-        if abs_url in seen:
-            continue
-        seen.add(abs_url)
 
-        name = _pick_filename(a, abs_url)
-        m1 = FILE_EXT_RE.search(abs_url)
-        m2 = FILE_EXT_RE.search(name)
-        ext = (m1.group(1) if m1 else (m2.group(1) if m2 else "")).lower()
-        out.append({"name": name, "url": abs_url, "ext": ext})
     return out
 
 
@@ -314,6 +372,6 @@ def extract_detail(html: str, base_url: str) -> dict:
     # Attachments use the un-stripped soup (preserves any anchor in the doc).
     # Body extraction makes its own copy via strip_chrome on the live soup;
     # we feed attachments BEFORE body, then body.
-    attachments = extract_attachments(soup, base_url)
+    attachments = extract_attachments(soup, base_url, source_detail_url=base_url)
     body = extract_body(soup)  # mutates soup in place
     return {"body_text": body, "attachments": attachments}
