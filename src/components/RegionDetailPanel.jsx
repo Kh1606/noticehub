@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { X, MapPin, Search } from 'lucide-react'
 import regionsData from '../data/regions.json'
 import NoticeList from './NoticeList.jsx'
+import NoticeDetailModal from './NoticeDetailModal.jsx'
 import useRegionInventory from './useRegionInventory.js'
 import {
   PERIODS,
@@ -70,6 +71,10 @@ export default function RegionDetailPanel({
   // not leak over when the user jumps to 충청남도.
   useEffect(() => { setSearchTerm('') }, [region])
   const isSearching = debouncedSearch.trim().length > 0
+
+  // Notice-detail modal state. When set, NoticeDetailModal opens.
+  const [openNotice, setOpenNotice] = useState(null)
+  const closeNotice = useCallback(() => setOpenNotice(null), [])
 
   // Re-sync internal sub selection whenever the trigger updates region or sub.
   useEffect(() => {
@@ -304,6 +309,7 @@ export default function RegionDetailPanel({
               period={period}
               searchTerm={debouncedSearch}
               onChangePeriod={updatePeriod}
+              onOpenNotice={setOpenNotice}
             />
           ) : (
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
@@ -312,6 +318,10 @@ export default function RegionDetailPanel({
           )}
         </div>
       </section>
+
+      {openNotice && (
+        <NoticeDetailModal notice={openNotice} onClose={closeNotice} />
+      )}
     </aside>
   )
 }

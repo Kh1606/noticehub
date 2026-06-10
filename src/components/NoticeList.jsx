@@ -120,6 +120,7 @@ export default function NoticeList({
   searchTerm = '',
   onCount,
   onChangePeriod,
+  onOpenNotice,
 }) {
   const [state, setState] = useState({ status: 'loading', items: [], error: null })
   const trimmedSearch = (searchTerm || '').trim()
@@ -233,11 +234,10 @@ export default function NoticeList({
       {state.items.map(n => {
         const dateStr = formatDate(n.posted_at)
         return (
-          <a
+          <button
             key={n.notice_id}
-            href={n.detail_url}
-            target="_blank"
-            rel="noopener noreferrer"
+            type="button"
+            onClick={() => onOpenNotice?.(n)}
             style={{
               display: 'flex',
               flexDirection: 'column',
@@ -248,7 +248,10 @@ export default function NoticeList({
               borderRadius: 'var(--radius)',
               boxShadow: 'var(--shadow-sm)',
               transition: 'transform 0.15s ease, border-color 0.15s, box-shadow 0.15s',
-              textDecoration: 'none',
+              textAlign: 'left',
+              cursor: 'pointer',
+              font: 'inherit',
+              color: 'inherit',
             }}
             onMouseEnter={e => {
               e.currentTarget.style.transform = 'translateY(-2px)'
@@ -321,9 +324,9 @@ export default function NoticeList({
                 marginTop: 'auto',
               }}
             >
-              원문 보기 <ExternalLink size={12} />
+              자세히 보기 <ExternalLink size={12} />
             </div>
-          </a>
+          </button>
         )
       })}
     </div>
