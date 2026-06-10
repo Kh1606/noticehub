@@ -13,7 +13,18 @@
 //   SUPABASE_URL
 //   SUPABASE_SERVICE_ROLE_KEY
 //
-// Deploy from the Supabase dashboard with verify_jwt = true (default).
+// IMPORTANT: deploy with verify_jwt = FALSE.
+//   Supabase's gateway rejects browser OPTIONS preflight requests
+//   (they carry no Authorization header) with 401 when verify_jwt is
+//   on — the actual POST never reaches this function and the user
+//   sees a CORS error. Function-level abuse prevention is handled
+//   below: we look up notice_id in notices_v2 and bail unless the
+//   detail_url matches, so the function can't be used as a generic
+//   URL fetcher.
+//
+//   Dashboard: Edge Functions → fetch-notice-detail → Settings →
+//              toggle "Verify JWT" OFF.
+//   CLI:       supabase functions deploy fetch-notice-detail --no-verify-jwt
 
 // deno-lint-ignore-file no-explicit-any
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts'
