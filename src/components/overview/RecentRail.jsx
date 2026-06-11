@@ -20,6 +20,18 @@ import AttachmentsButton from '../AttachmentsButton.jsx'
 
 const LIMIT = 15
 
+// Sources excluded from the public-facing "what's new" rail because their
+// posted_at values are broken / sentinel (e.g. 인포21's notices are dated
+// 2070-01-01 in the source data — they'd flood the top of any posted_at-
+// desc ordering). Notices from these sources are still reachable via the
+// region grid → 미분류 panel; only the rail surface filters them.
+//
+// PostgREST's `not.in.(…)` doesn't round-trip Korean values reliably
+// through the supabase-js URL encoder, so we chain individual `.neq()`s.
+// For >5 entries, revisit by either renaming the source upstream or
+// adding a server-side view that filters by date validity.
+const EXCLUDED_SUB_ENTITIES = ['인포21']
+
 export default function RecentRail({ onOpenAttachments, onPickOrg, refreshToken }) {
   const [state, setState] = useState({ status: 'loading', items: [], error: null })
 
@@ -29,10 +41,13 @@ export default function RecentRail({ onOpenAttachments, onPickOrg, refreshToken 
       ? { ...prev, status: 'loading' }     // keep items shown while refetching
       : { status: 'loading', items: [], error: null })
 
-    supabase
+    let q = supabase
       .from('notices_v2')
       .select('notice_id,title,detail_url,posted_at,source_page,region,sub_entity,scraped_at')
-      .order('posted_at', { ascending: false, nullsFirst: false })
+    for (const name of EXCLUDED_SUB_ENTITIES) {
+      q = q.neq('sub_entity', name)
+    }
+    q.order('posted_at', { ascending: false, nullsFirst: false })
       .limit(LIMIT)
       .then(async ({ data, error }) => {
         if (cancelled) return
