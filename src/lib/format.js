@@ -22,11 +22,21 @@ export function formatRelative(ts) {
 
 // Human-friendly notice-posted-on label (`오늘 / 어제 / N일 전 / YYYY년 M월 D일`).
 // Originally: NoticeList.formatDate.
+//
+// Defensive against future-dated posts: a few sources in notices_v2 ship
+// posted_at values in the future (인포21 = 2070-01-01 sentinel,
+// 건설신기술특허플랫폼 ≈ today+5..14). Without the days<0 branch we'd
+// render "-13일 전". The rail + overview-search filter these out at the
+// query level (.lte('posted_at', today)) so they don't dominate
+// discovery surfaces; this branch is the belt-and-suspenders for any
+// future-dated row that still reaches a card render (e.g. when a user
+// drills into the source's own region panel).
 export function formatNoticeDate(iso) {
   if (!iso) return null
   const d = new Date(iso)
   if (isNaN(d)) return iso
   const days = Math.floor((Date.now() - d) / 86400000)
+  if (days < 0) return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`
   if (days === 0) return '오늘'
   if (days === 1) return '어제'
   if (days <= 14) return `${days}일 전`

@@ -15,7 +15,7 @@ import { Search, X, ExternalLink, SearchX } from 'lucide-react'
 import { supabase } from '../../lib/supabase.js'
 import { PERIODS, cutoffDateFor, periodConfig } from '../../lib/periodFilter.js'
 import { highlight, splitTerms } from '../../lib/searchHighlight.jsx'
-import { formatNoticeDate } from '../../lib/format.js'
+import { formatNoticeDate, todayYMD } from '../../lib/format.js'
 import { displayRegion } from '../../lib/regionLabels.js'
 import { attachAttachments } from '../../lib/withAttachments.js'
 import { openNoticeUrl } from '../../lib/openNotice.js'
@@ -45,9 +45,15 @@ export function useOverviewSearch() {
     let cancelled = false
     setState({ status: 'loading', items: [], error: null })
 
+    // Same two-rule guard as RecentRail: drop future-dated posts +
+    // explicitly kill 인포21 (upstream-broken source). Keeps search
+    // results sorted by actual recency for everything legitimate.
+    const today = todayYMD()
     let q = supabase
       .from('notices_v2')
       .select('notice_id,title,detail_url,posted_at,source_page,region,sub_entity,scraped_at')
+      .lte('posted_at', today)
+      .neq('sub_entity', '인포21')
     for (const t of splitTerms(debounced)) q = q.ilike('title', `%${t}%`)
     const cutoff = cutoffDateFor(period)
     if (cutoff) q = q.gte('posted_at', cutoff)

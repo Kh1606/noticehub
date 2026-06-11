@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { supabase } from '../../lib/supabase.js'
-import { formatNoticeDate } from '../../lib/format.js'
+import { formatNoticeDate, todayYMD } from '../../lib/format.js'
 import { displayRegion } from '../../lib/regionLabels.js'
 import { attachAttachments } from '../../lib/withAttachments.js'
 import { openNoticeUrl } from '../../lib/openNotice.js'
@@ -19,18 +19,6 @@ import OrgIcon from '../OrgIcon.jsx'
 import AttachmentsButton from '../AttachmentsButton.jsx'
 
 const LIMIT = 15
-
-// Sources excluded from the public-facing "what's new" rail because their
-// posted_at values are broken / sentinel (e.g. 인포21's notices are dated
-// 2070-01-01 in the source data — they'd flood the top of any posted_at-
-// desc ordering). Notices from these sources are still reachable via the
-// region grid → 미분류 panel; only the rail surface filters them.
-//
-// PostgREST's `not.in.(…)` doesn't round-trip Korean values reliably
-// through the supabase-js URL encoder, so we chain individual `.neq()`s.
-// For >5 entries, revisit by either renaming the source upstream or
-// adding a server-side view that filters by date validity.
-const EXCLUDED_SUB_ENTITIES = ['인포21']
 
 export default function RecentRail({ onOpenAttachments, onPickOrg, refreshToken }) {
   const [state, setState] = useState({ status: 'loading', items: [], error: null })
@@ -41,13 +29,26 @@ export default function RecentRail({ onOpenAttachments, onPickOrg, refreshToken 
       ? { ...prev, status: 'loading' }     // keep items shown while refetching
       : { status: 'loading', items: [], error: null })
 
-    let q = supabase
+    // Two stacked exclusions for the rail:
+    //   1. `.lte('posted_at', today)` — drops future-dated rows. Catches
+    //      건설신기술특허플랫폼 (posted_at = today+5..14) AND most of
+    //      인포21 (2070-01-01 sentinel), and protects against any
+    //      similar source bug that surfaces tomorrow without code change.
+    //   2. `.neq('sub_entity', '인포21')` — explicit per-source kill.
+    //      인포21 has a mix of sentinel and real-dated rows, but the
+    //      source itself is upstream-broken; user wants it gone from
+    //      the rail entirely. Still reachable via region grid → 미분류.
+    // For >5 per-source kills, refactor to an EXCLUDED_SUB_ENTITIES list +
+    // chained .neq()s (PostgREST's not.in.(…) mangles Korean through
+    // supabase-js's URL encoder — verified live 2026-06-11).
+    const today = todayYMD()
+
+    supabase
       .from('notices_v2')
       .select('notice_id,title,detail_url,posted_at,source_page,region,sub_entity,scraped_at')
-    for (const name of EXCLUDED_SUB_ENTITIES) {
-      q = q.neq('sub_entity', name)
-    }
-    q.order('posted_at', { ascending: false, nullsFirst: false })
+      .lte('posted_at', today)
+      .neq('sub_entity', '인포21')
+      .order('posted_at', { ascending: false, nullsFirst: false })
       .limit(LIMIT)
       .then(async ({ data, error }) => {
         if (cancelled) return
