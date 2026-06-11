@@ -72,7 +72,11 @@ function PublicApp() {
               onPickSub={pickSub}
             />
           ) : (
-            <InventoryView onPick={pickRegion} />
+            <InventoryView
+              onPick={pickRegion}
+              onPickSub={pickSub}
+              panelOpen={panelOpen}
+            />
           )}
         </div>
         {panelOpen && (

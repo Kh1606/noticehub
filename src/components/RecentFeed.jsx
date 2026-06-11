@@ -1,3 +1,7 @@
+// NOTE: currently unused. The 개요 rebuild (2026-06-11) keeps the same
+// "최근 공지" pattern as overview/RecentRail.jsx — start there if you want
+// to extend the recent-notices feed. Left in place per the redesign
+// constraint of "additions only; zero removals".
 import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'

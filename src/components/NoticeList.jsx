@@ -3,18 +3,8 @@ import { ExternalLink, Inbox, SearchX } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { cutoffDateFor, periodConfig } from '../lib/periodFilter.js'
 import { highlight, splitTerms } from '../lib/searchHighlight.jsx'
+import { formatNoticeDate as formatDate } from '../lib/format.js'
 import NoticePlaceholder from './NoticePlaceholder.jsx'
-
-function formatDate(iso) {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (isNaN(d)) return iso
-  const days = Math.floor((Date.now() - d) / 86400000)
-  if (days === 0) return '오늘'
-  if (days === 1) return '어제'
-  if (days <= 14) return `${days}일 전`
-  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`
-}
 
 function SkeletonCards() {
   return (

@@ -1,3 +1,6 @@
+// NOTE: currently unused. Source-page links are surfaced as chips inside
+// notice cards (NoticeList, OverviewSearch results). Kept per "additions
+// only; zero removals".
 import { ExternalLink } from 'lucide-react'
 
 export default function SourceCard({ source }) {

@@ -9,11 +9,20 @@
   --bg-surface:    #FFFFFF;
   --bg-card:       #FFFFFF;
   --bg-hover:      #F5F9FF;
+  /* Inset / "well" surface for empty states and inline read-only previews.
+     Several components used `var(--bg-page, #F6F8FB)` with an inline fallback;
+     defining the token here means the fallbacks just stop being load-bearing. */
+  --bg-page:       #F4F7FB;
   --border:        #D0DFF5;
   --border-light:  #BBDEFB;
   --accent:        #1565C0;
   --accent-hover:  #0D1B6E;
-  --accent-light:  #E1F5FE;
+  /* Retuned from #E1F5FE (cyan-leaning) to a hue aligned with --accent so chips
+     and badges stop subtly clashing with the primary blue. Same lightness. */
+  --accent-light:  #E3EEFB;
+  /* Mid-tint between --accent-light and --accent — used for micro-bars (e.g.
+     the per-org count underline inside RegionCardV2). */
+  --accent-weak-strong: #C9DEF4;
   --accent-text:   #FFFFFF;
   --text-primary:  #1A2340;
   --text-secondary:#5A6A88;
@@ -26,6 +35,18 @@
   --primary-mid:   #1976D2;
   --accent-cyan:   #00AEEF;
   --sidebar-bg:    #0D1B6E;
+  /* Selection color (the *currently picked* sub-region on the map / active org
+     chip in the panel). Deliberately outside the blue ramp so selection never
+     reads as data intensity. Tokenized from previously-hardcoded hex values
+     in KoreaMap.jsx and RegionDetailPanel.jsx. */
+  --select-warm:        #F97316;
+  --select-warm-strong: #C2410C;
+  /* Standard focus-ring color for inputs (accent at 18% alpha). Replaces the
+     hardcoded rgba(37,99,235,0.12) the panel's SearchBar used to use. */
+  --focus-ring:    rgba(21, 101, 192, 0.18);
+  /* Numeric font stack — Barlow leads on counts/dates so digits get the tighter,
+     tabular feel; Korean text keeps the body Noto Sans KR stack. */
+  --font-num:      'Barlow', 'Noto Sans KR', system-ui, sans-serif;
   --radius:        12px;
   --radius-sm:     8px;
 }
@@ -68,4 +89,22 @@ button { font: inherit; cursor: pointer; background: none; border: none; color: 
   background-size: 800px 100%;
   animation: shimmer 1.4s infinite linear;
   border-radius: 4px;
+}
+
+/* RefreshButton spin (and any other rotating affordance). */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Respect the user's reduced-motion preference: no shimmer loop, no hover
+   transforms, no spinning refresh icons. Everything still works, just still. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

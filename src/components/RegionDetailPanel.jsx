@@ -4,6 +4,7 @@ import regionsData from '../data/regions.json'
 import NoticeList from './NoticeList.jsx'
 import NoticeDetailModal from './NoticeDetailModal.jsx'
 import useRegionInventory from './useRegionInventory.js'
+import { displayRegion } from '../lib/regionLabels.js'
 import {
   PERIODS,
   readStoredPeriod,
@@ -149,6 +150,7 @@ export default function RegionDetailPanel({
             <MapPin size={12} /> 선택된 지역
           </div>
           <h2
+            title={region}
             style={{
               fontSize: 22,
               fontWeight: 700,
@@ -158,7 +160,7 @@ export default function RegionDetailPanel({
               wordBreak: 'keep-all',
             }}
           >
-            {region ?? '—'}
+            {region ? displayRegion(region) : '—'}
           </h2>
           <div
             style={{
@@ -340,7 +342,7 @@ function SearchBar({ value, onChange, placeholder }) {
         border: '1px solid ' + (focused ? 'var(--accent)' : 'var(--border)'),
         borderRadius: 8,
         transition: 'border-color 0.15s, box-shadow 0.15s',
-        boxShadow: focused ? '0 0 0 3px rgba(37, 99, 235, 0.12)' : 'none',
+        boxShadow: focused ? '0 0 0 3px var(--focus-ring)' : 'none',
       }}
     >
       <Search size={14} color="var(--text-muted)" />
@@ -435,9 +437,9 @@ function OrgChip({ name, count, active, loading, onClick }) {
   // No notices: muted gray.
   const styles = active
     ? {
-        background: '#F97316',
+        background: 'var(--select-warm)',
         color: '#fff',
-        border: '1px solid #C2410C',
+        border: '1px solid var(--select-warm-strong)',
       }
     : hasNotices
     ? {

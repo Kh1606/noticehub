@@ -1,3 +1,5 @@
+// NOTE: currently unused. Region navigation now lives in InventoryView's
+// card grid + zero-notice chips. Kept per "additions only; zero removals".
 import { useState, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 

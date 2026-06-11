@@ -21,8 +21,10 @@ const INACTIVE_FILL = '#C8CDD5'
 
 // Color used for the sub-region the user has currently picked (synced
 // with the right-panel selection). Distinct from both blue + gray.
-const SELECTED_FILL = '#F97316'      // orange-500
-const SELECTED_STROKE = '#C2410C'    // orange-700
+// Tokenized in index.css so the same values get reused in
+// RegionDetailPanel.OrgChip (cross-view selection language).
+const SELECTED_FILL = 'var(--select-warm)'           // #F97316 — orange-500
+const SELECTED_STROKE = 'var(--select-warm-strong)'  // #C2410C — orange-700
 
 /**
  * @param countsByRegion     { [regionName]: total }
