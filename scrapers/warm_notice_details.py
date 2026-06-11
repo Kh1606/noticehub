@@ -1,11 +1,15 @@
 """
 Cache warmer for notice_details.
 
-Finds notices_v2 rows whose detail page hasn't been parsed yet (or whose
-v1 cache lacks body_text), fetches each in parallel, extracts body +
-attachments via scrapers/_helpers/notice_detail_extract.py, and upserts
-into notice_details. Once a notice is warmed, opening it in the popup
-is an instant cache hit — no Edge Function fetch.
+Finds notices_v2 rows whose detail page hasn't been parsed yet, fetches
+each in parallel, extracts attachments via
+scrapers/_helpers/notice_detail_extract.py, and upserts into
+notice_details. Once a notice is warmed, each card knows whether it has
+files and can show the 📎 button without any further fetch.
+
+Body-text extraction was removed on 2026-06-11 — the notice popup is
+gone; cards open the source URL in a new tab. The body_text column in
+notice_details is left alone (NULL going forward).
 
 Usage:
   python -m scrapers.warm_notice_details                 # backfill everything missing
@@ -70,7 +74,11 @@ def page_all_notices(client, only: str | None) -> list[dict[str, Any]]:
 
 
 def already_cached_ids(client) -> set[str]:
-    """notice_ids whose cache row has status=ok AND body_text NOT NULL."""
+    """notice_ids whose cache row has status=ok.
+
+    Used to be ``status=ok AND body_text NOT NULL`` — the body filter
+    became meaningless once we stopped writing body_text (2026-06-11).
+    """
     out: set[str] = set()
     start = 0
     while True:
@@ -78,7 +86,6 @@ def already_cached_ids(client) -> set[str]:
             client.table("notice_details")
             .select("notice_id")
             .eq("status", "ok")
-            .not_.is_("body_text", "null")
             .range(start, start + PAGE - 1)
             .execute()
         )
@@ -154,7 +161,6 @@ def warm_one(notice: dict[str, Any]) -> dict[str, Any]:
                 "notice_id": notice_id,
                 "status": "error",
                 "error_text": f"HTTP {r.status_code}",
-                "body_text": None,
                 "attachments": [],
                 "elapsed_ms": (time.time() - t0) * 1000,
             }
@@ -164,7 +170,6 @@ def warm_one(notice: dict[str, Any]) -> dict[str, Any]:
             "notice_id": notice_id,
             "status": "ok",
             "error_text": None,
-            "body_text": out["body_text"] or None,
             "attachments": out["attachments"],
             "elapsed_ms": (time.time() - t0) * 1000,
         }
@@ -173,7 +178,6 @@ def warm_one(notice: dict[str, Any]) -> dict[str, Any]:
             "notice_id": notice_id,
             "status": "error",
             "error_text": f"{type(e).__name__}: {str(e)[:200]}",
-            "body_text": None,
             "attachments": [],
             "elapsed_ms": (time.time() - t0) * 1000,
         }
@@ -182,18 +186,18 @@ def warm_one(notice: dict[str, Any]) -> dict[str, Any]:
             "notice_id": notice_id,
             "status": "error",
             "error_text": f"{type(e).__name__}: {str(e)[:200]}",
-            "body_text": None,
             "attachments": [],
             "elapsed_ms": (time.time() - t0) * 1000,
         }
 
 
 def upsert(client, result: dict[str, Any]) -> None:
+    # body_text was dropped from the upsert on 2026-06-11. The DB column
+    # still exists and will simply hold NULL for new rows.
     client.table("notice_details").upsert(
         {
             "notice_id": result["notice_id"],
             "attachments": result["attachments"],
-            "body_text": result["body_text"],
             "status": result["status"],
             "error_text": result["error_text"],
             "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -231,9 +235,9 @@ def warm_missing(
     if not todo:
         if not quiet:
             print("nothing to do.")
-        return {"total": 0, "ok": 0, "err": 0, "no_body": 0, "no_atts": 0}
+        return {"total": 0, "ok": 0, "err": 0, "no_atts": 0}
 
-    counts = {"total": len(todo), "ok": 0, "err": 0, "no_body": 0, "no_atts": 0}
+    counts = {"total": len(todo), "ok": 0, "err": 0, "no_atts": 0}
     t_start = time.time()
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -249,7 +253,6 @@ def warm_missing(
                     "notice_id": n["notice_id"],
                     "status": "error",
                     "error_text": f"{type(e).__name__}: {str(e)[:200]}",
-                    "body_text": None,
                     "attachments": [],
                     "elapsed_ms": 0,
                 }
@@ -261,18 +264,15 @@ def warm_missing(
 
             if res["status"] == "ok":
                 counts["ok"] += 1
-                if not res["body_text"]:
-                    counts["no_body"] += 1
                 if not res["attachments"]:
                     counts["no_atts"] += 1
                 if not quiet:
-                    label = "✅" if (res["body_text"] and res["attachments"]) else "⚠"
+                    label = "✅" if res["attachments"] else "⚠"
                     print(
                         f"  [{i:>4}/{len(todo)}] {label} "
                         f"{(n.get('region') or '')[:8]:<8} "
                         f"{(n.get('sub_entity') or '')[:18]:<18} "
                         f"files={len(res['attachments']):>2} "
-                        f"body={len(res['body_text'] or ''):>4} "
                         f"{int(res['elapsed_ms']):>5}ms"
                     )
             else:
@@ -288,9 +288,8 @@ def warm_missing(
     if not quiet:
         elapsed = time.time() - t_start
         print(
-            f"\nDone. {counts['ok']} ok ({counts['no_body']} w/o body, "
-            f"{counts['no_atts']} w/o attachments), {counts['err']} errors "
-            f"in {elapsed:.1f}s."
+            f"\nDone. {counts['ok']} ok ({counts['no_atts']} w/o attachments), "
+            f"{counts['err']} errors in {elapsed:.1f}s."
         )
     return counts
 

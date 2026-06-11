@@ -17,7 +17,10 @@ import { PERIODS, cutoffDateFor, periodConfig } from '../../lib/periodFilter.js'
 import { highlight, splitTerms } from '../../lib/searchHighlight.jsx'
 import { formatNoticeDate } from '../../lib/format.js'
 import { displayRegion } from '../../lib/regionLabels.js'
+import { attachAttachments } from '../../lib/withAttachments.js'
+import { openNoticeUrl } from '../../lib/openNotice.js'
 import OrgIcon from '../OrgIcon.jsx'
+import AttachmentsButton from '../AttachmentsButton.jsx'
 
 // Mirrors NoticeList's behavior: AND across whitespace-split terms via
 // .ilike('title', '%t%'), debounce 250ms, limit 50.
@@ -50,10 +53,15 @@ export function useOverviewSearch() {
     if (cutoff) q = q.gte('posted_at', cutoff)
     q = q.order('posted_at', { ascending: false, nullsFirst: false }).limit(50)
 
-    q.then(({ data, error }) => {
+    q.then(async ({ data, error }) => {
       if (cancelled) return
-      if (error) setState({ status: 'error', items: [], error: error.message })
-      else setState({ status: 'ok', items: data || [], error: null })
+      if (error) {
+        setState({ status: 'error', items: [], error: error.message })
+        return
+      }
+      const enriched = await attachAttachments(data || [])
+      if (cancelled) return
+      setState({ status: 'ok', items: enriched, error: null })
     })
 
     return () => { cancelled = true }
@@ -173,7 +181,7 @@ export function OverviewSearchResults({
   state,
   period,
   onChangePeriod,
-  onOpenNotice,
+  onOpenAttachments,
   onPickOrg,
 }) {
   const terms = splitTerms(debounced)
@@ -303,7 +311,7 @@ export function OverviewSearchResults({
               key={n.notice_id}
               n={n}
               terms={terms}
-              onOpenNotice={onOpenNotice}
+              onOpenAttachments={onOpenAttachments}
               onPickOrg={onPickOrg}
             />
           ))}
@@ -313,17 +321,19 @@ export function OverviewSearchResults({
   )
 }
 
-function ResultCard({ n, terms, onOpenNotice, onPickOrg }) {
+function ResultCard({ n, terms, onOpenAttachments, onPickOrg }) {
   const dateStr = formatNoticeDate(n.posted_at)
+  const attCount = n.attachments?.length || 0
   return (
     <button
       type="button"
-      onClick={() => onOpenNotice?.(n)}
+      onClick={() => openNoticeUrl(n)}
+      title={n.title}
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
-        padding: 14,
+        gap: 10,
+        padding: 18,
         background: 'var(--bg-card)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius)',
@@ -439,8 +449,8 @@ function ResultCard({ n, terms, onOpenNotice, onPickOrg }) {
       <div
         className="line-clamp-2"
         style={{
-          fontSize: 14,
-          fontWeight: 500,
+          fontSize: 15,
+          fontWeight: 600,
           color: 'var(--text-primary)',
           lineHeight: 1.4,
           wordBreak: 'keep-all',
@@ -450,16 +460,32 @@ function ResultCard({ n, terms, onOpenNotice, onPickOrg }) {
       </div>
       <div
         style={{
-          fontSize: 12,
-          color: 'var(--accent)',
-          fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
+          justifyContent: 'space-between',
+          gap: 8,
           marginTop: 'auto',
+          flexWrap: 'wrap',
         }}
       >
-        자세히 보기 <ExternalLink size={12} />
+        <div
+          style={{
+            fontSize: 12,
+            color: 'var(--accent)',
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          원문 보기 <ExternalLink size={12} />
+        </div>
+        {attCount > 0 && (
+          <AttachmentsButton
+            count={attCount}
+            onOpen={() => onOpenAttachments?.(n)}
+          />
+        )}
       </div>
     </button>
   )

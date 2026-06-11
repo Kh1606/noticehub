@@ -15,7 +15,7 @@ import {
   OverviewSearchInput,
   OverviewSearchResults,
 } from './overview/OverviewSearch.jsx'
-import NoticeDetailModal from './NoticeDetailModal.jsx'
+import AttachmentsPopup from './AttachmentsPopup.jsx'
 
 const SORT_KEY = 'clt-plus.overviewSort'
 const VALID_SORTS = ['count', 'recent', 'name']
@@ -57,7 +57,10 @@ export default function InventoryView({ onPick, onPickSub, panelOpen }) {
   const { status, totalNotices, latestAt, byRegion, todayTotal, fetchedAt, refreshing } = inv
 
   const search = useOverviewSearch()
-  const [openNotice, setOpenNotice] = useState(null)
+  // Attachments popup state — opened from the 📎 button on either a
+  // search-result card or a recent-rail row. Card body clicks go straight
+  // to detail_url via openNoticeUrl (no in-app modal anymore).
+  const [openAtts, setOpenAtts] = useState(null)
   // RecentRail re-runs its query whenever this token bumps (manual refresh).
   const [railToken, bumpRail] = useReducer(n => n + 1, 0)
 
@@ -214,7 +217,7 @@ export default function InventoryView({ onPick, onPickSub, panelOpen }) {
           state={search.state}
           period={search.period}
           onChangePeriod={search.setPeriod}
-          onOpenNotice={setOpenNotice}
+          onOpenAttachments={setOpenAtts}
           onPickOrg={pickOrg}
         />
       ) : (
@@ -342,7 +345,7 @@ export default function InventoryView({ onPick, onPickSub, panelOpen }) {
               isn't already occupying the right side. */}
           {showRail && (
             <RecentRail
-              onOpenNotice={setOpenNotice}
+              onOpenAttachments={setOpenAtts}
               onPickOrg={pickOrg}
               refreshToken={railToken}
             />
@@ -350,8 +353,8 @@ export default function InventoryView({ onPick, onPickSub, panelOpen }) {
         </div>
       )}
 
-      {openNotice && (
-        <NoticeDetailModal notice={openNotice} onClose={() => setOpenNotice(null)} />
+      {openAtts && (
+        <AttachmentsPopup notice={openAtts} onClose={() => setOpenAtts(null)} />
       )}
     </div>
   )

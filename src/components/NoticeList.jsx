@@ -4,8 +4,11 @@ import { supabase } from '../lib/supabase.js'
 import { cutoffDateFor, periodConfig } from '../lib/periodFilter.js'
 import { highlight, splitTerms } from '../lib/searchHighlight.jsx'
 import { formatNoticeDate as formatDate } from '../lib/format.js'
+import { attachAttachments } from '../lib/withAttachments.js'
+import { openNoticeUrl } from '../lib/openNotice.js'
 import NoticePlaceholder from './NoticePlaceholder.jsx'
 import OrgIcon from './OrgIcon.jsx'
+import AttachmentsButton from './AttachmentsButton.jsx'
 
 function SkeletonCards() {
   return (
@@ -111,7 +114,7 @@ export default function NoticeList({
   searchTerm = '',
   onCount,
   onChangePeriod,
-  onOpenNotice,
+  onOpenAttachments,
 }) {
   const [state, setState] = useState({ status: 'loading', items: [], error: null })
   const trimmedSearch = (searchTerm || '').trim()
@@ -138,15 +141,19 @@ export default function NoticeList({
     if (cutoff) q = q.gte('posted_at', cutoff)
     q = q.order('posted_at', { ascending: false, nullsFirst: false }).limit(50)
 
-    q.then(({ data, error }) => {
+    q.then(async ({ data, error }) => {
       if (cancelled) return
       if (error) {
         setState({ status: 'error', items: [], error: error.message })
-      } else {
-        const items = data || []
-        setState({ status: 'ok', items, error: null })
-        onCount?.(items.length)
+        return
       }
+      // Enrich with attachments from notice_details — adds the
+      // `attachments` field so each card can show a 📎 button when
+      // files exist. Unwarmed notices come back with `[]`.
+      const enriched = await attachAttachments(data || [])
+      if (cancelled) return
+      setState({ status: 'ok', items: enriched, error: null })
+      onCount?.(enriched.length)
     })
 
     return () => { cancelled = true }
@@ -224,16 +231,18 @@ export default function NoticeList({
     >
       {state.items.map(n => {
         const dateStr = formatDate(n.posted_at)
+        const attCount = n.attachments?.length || 0
         return (
           <button
             key={n.notice_id}
             type="button"
-            onClick={() => onOpenNotice?.(n)}
+            onClick={() => openNoticeUrl(n)}
+            title={n.title}
             style={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 8,
-              padding: 14,
+              gap: 10,
+              padding: 18,
               background: 'var(--bg-card)',
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius)',
@@ -300,26 +309,43 @@ export default function NoticeList({
             <div
               className="line-clamp-2"
               style={{
-                fontSize: 14,
-                fontWeight: 500,
+                fontSize: 15,
+                fontWeight: 600,
                 color: 'var(--text-primary)',
                 lineHeight: 1.4,
+                wordBreak: 'keep-all',
               }}
             >
               {isSearching ? highlight(n.title, terms) : n.title}
             </div>
             <div
               style={{
-                fontSize: 12,
-                color: 'var(--accent)',
-                fontWeight: 600,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 4,
+                justifyContent: 'space-between',
+                gap: 8,
                 marginTop: 'auto',
+                flexWrap: 'wrap',
               }}
             >
-              자세히 보기 <ExternalLink size={12} />
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--accent)',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                원문 보기 <ExternalLink size={12} />
+              </div>
+              {attCount > 0 && (
+                <AttachmentsButton
+                  count={attCount}
+                  onOpen={() => onOpenAttachments?.(n)}
+                />
+              )}
             </div>
           </button>
         )

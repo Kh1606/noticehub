@@ -1,7 +1,7 @@
 // 최근 공지 rail — 15 most-recent notices nationwide, shown to the right
-// of the region grid on wide viewports. Each row opens the same
-// NoticeDetailModal the search results use; the org chip deep-links into
-// the panel (App.pickSub).
+// of the region grid on wide viewports. Row click opens the source URL
+// in a new tab; if the notice has attachments a small 📎 button opens
+// the AttachmentsPopup (which the parent owns).
 //
 // This is a small independent query (limit 15) — not routed through the
 // inventory store because the store is keyed on the per-region rollup, not
@@ -13,11 +13,14 @@ import { Inbox } from 'lucide-react'
 import { supabase } from '../../lib/supabase.js'
 import { formatNoticeDate } from '../../lib/format.js'
 import { displayRegion } from '../../lib/regionLabels.js'
+import { attachAttachments } from '../../lib/withAttachments.js'
+import { openNoticeUrl } from '../../lib/openNotice.js'
 import OrgIcon from '../OrgIcon.jsx'
+import AttachmentsButton from '../AttachmentsButton.jsx'
 
 const LIMIT = 15
 
-export default function RecentRail({ onOpenNotice, onPickOrg, refreshToken }) {
+export default function RecentRail({ onOpenAttachments, onPickOrg, refreshToken }) {
   const [state, setState] = useState({ status: 'loading', items: [], error: null })
 
   useEffect(() => {
@@ -31,10 +34,15 @@ export default function RecentRail({ onOpenNotice, onPickOrg, refreshToken }) {
       .select('notice_id,title,detail_url,posted_at,source_page,region,sub_entity,scraped_at')
       .order('posted_at', { ascending: false, nullsFirst: false })
       .limit(LIMIT)
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (cancelled) return
-        if (error) setState({ status: 'error', items: [], error: error.message })
-        else setState({ status: 'ok', items: data || [], error: null })
+        if (error) {
+          setState({ status: 'error', items: [], error: error.message })
+          return
+        }
+        const enriched = await attachAttachments(data || [])
+        if (cancelled) return
+        setState({ status: 'ok', items: enriched, error: null })
       })
 
     return () => { cancelled = true }
@@ -153,7 +161,7 @@ export default function RecentRail({ onOpenNotice, onPickOrg, refreshToken }) {
               >
                 <RecentRow
                   n={n}
-                  onOpenNotice={onOpenNotice}
+                  onOpenAttachments={onOpenAttachments}
                   onPickOrg={onPickOrg}
                 />
               </li>
@@ -165,12 +173,13 @@ export default function RecentRail({ onOpenNotice, onPickOrg, refreshToken }) {
   )
 }
 
-function RecentRow({ n, onOpenNotice, onPickOrg }) {
+function RecentRow({ n, onOpenAttachments, onPickOrg }) {
   const dateStr = formatNoticeDate(n.posted_at)
+  const attCount = n.attachments?.length || 0
   return (
     <button
       type="button"
-      onClick={() => onOpenNotice?.(n)}
+      onClick={() => openNoticeUrl(n)}
       title={n.title}
       style={{
         display: 'flex',
@@ -262,7 +271,7 @@ function RecentRow({ n, onOpenNotice, onPickOrg }) {
       <div
         className="line-clamp-2"
         style={{
-          fontSize: 13,
+          fontSize: 14,
           fontWeight: 500,
           color: 'var(--text-primary)',
           lineHeight: 1.35,
@@ -271,6 +280,14 @@ function RecentRow({ n, onOpenNotice, onPickOrg }) {
       >
         {n.title}
       </div>
+      {attCount > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <AttachmentsButton
+            count={attCount}
+            onOpen={() => onOpenAttachments?.(n)}
+          />
+        </div>
+      )}
     </button>
   )
 }

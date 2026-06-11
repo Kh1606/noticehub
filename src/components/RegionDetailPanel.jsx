@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { X, MapPin, Search } from 'lucide-react'
 import regionsData from '../data/regions.json'
 import NoticeList from './NoticeList.jsx'
-import NoticeDetailModal from './NoticeDetailModal.jsx'
+import AttachmentsPopup from './AttachmentsPopup.jsx'
 import useRegionInventory from './useRegionInventory.js'
 import { displayRegion } from '../lib/regionLabels.js'
 import OrgIcon from './OrgIcon.jsx'
@@ -102,9 +102,11 @@ export default function RegionDetailPanel({
   useEffect(() => { setSearchTerm('') }, [region])
   const isSearching = debouncedSearch.trim().length > 0
 
-  // Notice-detail modal state. When set, NoticeDetailModal opens.
-  const [openNotice, setOpenNotice] = useState(null)
-  const closeNotice = useCallback(() => setOpenNotice(null), [])
+  // Attachments popup state. When set, <AttachmentsPopup> opens with that
+  // notice's pre-loaded attachment list. Card body click goes straight to
+  // the source URL (window.open via openNoticeUrl); this is only for the 📎.
+  const [openAtts, setOpenAtts] = useState(null)
+  const closeAtts = useCallback(() => setOpenAtts(null), [])
 
   // Re-sync internal sub selection whenever the trigger updates region or sub.
   useEffect(() => {
@@ -433,7 +435,7 @@ export default function RegionDetailPanel({
               period={period}
               searchTerm={debouncedSearch}
               onChangePeriod={updatePeriod}
-              onOpenNotice={setOpenNotice}
+              onOpenAttachments={setOpenAtts}
             />
           ) : (
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
@@ -443,8 +445,8 @@ export default function RegionDetailPanel({
         </div>
       </section>
 
-      {openNotice && (
-        <NoticeDetailModal notice={openNotice} onClose={closeNotice} />
+      {openAtts && (
+        <AttachmentsPopup notice={openAtts} onClose={closeAtts} />
       )}
     </aside>
   )
