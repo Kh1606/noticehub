@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { X, MapPin, Search } from 'lucide-react'
 import regionsData from '../data/regions.json'
 import NoticeList from './NoticeList.jsx'
@@ -13,6 +13,34 @@ import {
   dateRangeLabel,
   periodConfig,
 } from '../lib/periodFilter.js'
+
+// ── Resizable-panel constants ────────────────────────────────────────────
+// Width is drag-controlled by a vertical handle on the panel's left edge;
+// persisted in localStorage so it survives reloads + view-mode switches.
+const PANEL_WIDTH_KEY = 'clt-plus.panelWidth'
+const DEFAULT_PANEL_WIDTH = 540    // matches the previous fixed width
+const MIN_PANEL_WIDTH = 320        // below this, period chips wrap awkwardly
+const MAX_PANEL_WIDTH_RATIO = 0.80 // never let panel exceed 80% of viewport
+const KEYBOARD_STEP = 20           // ← / → keyboard nudges this many px
+
+function readStoredPanelWidth() {
+  try {
+    const v = parseInt(window.localStorage.getItem(PANEL_WIDTH_KEY), 10)
+    if (Number.isFinite(v) && v >= MIN_PANEL_WIDTH) return v
+  } catch {}
+  return DEFAULT_PANEL_WIDTH
+}
+
+function writeStoredPanelWidth(w) {
+  try { window.localStorage.setItem(PANEL_WIDTH_KEY, String(w)) } catch {}
+}
+
+function clampWidth(w) {
+  const maxW = Math.floor(
+    (typeof window !== 'undefined' ? window.innerWidth : 1920) * MAX_PANEL_WIDTH_RATIO,
+  )
+  return Math.max(MIN_PANEL_WIDTH, Math.min(maxW, w))
+}
 
 /**
  * App-level shared right-side panel. Triggered by either an InventoryView
@@ -110,10 +138,96 @@ export default function RegionDetailPanel({
 
   const activeOrgs = sortedChips.filter(c => c.count > 0).length
 
+  // ── Resizable width ──────────────────────────────────────────────────
+  // panelWidthRef mirrors panelWidth so the mouseup closure that writes
+  // localStorage reads the final value (rather than the stale closure-time one).
+  const [panelWidth, setPanelWidth] = useState(() => clampWidth(readStoredPanelWidth()))
+  const panelWidthRef = useRef(panelWidth)
+  useEffect(() => { panelWidthRef.current = panelWidth }, [panelWidth])
+  const [resizing, setResizing] = useState(false)
+
+  // Clamp on viewport shrink so the panel can't steal the whole screen.
+  // Doesn't write the clamped value back — when the window grows again,
+  // the user's preferred width is restored on the next render that reads
+  // localStorage (which is just the initial mount after a reload).
+  useEffect(() => {
+    const onResize = () => {
+      setPanelWidth(prev => {
+        const clamped = clampWidth(prev)
+        return clamped === prev ? prev : clamped
+      })
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const beginResize = useCallback((e) => {
+    // Support both mouse and touch
+    const startX = e.clientX ?? e.touches?.[0]?.clientX
+    if (startX == null) return
+    e.preventDefault()
+    const startW = panelWidthRef.current
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    setResizing(true)
+
+    const onMove = (ev) => {
+      const x = ev.clientX ?? ev.touches?.[0]?.clientX
+      if (x == null) return
+      // Drag LEFT (smaller x) → panel grows; drag RIGHT → panel shrinks.
+      const dx = startX - x
+      setPanelWidth(clampWidth(startW + dx))
+    }
+    const onUp = () => {
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onUp)
+      document.removeEventListener('touchcancel', onUp)
+      setResizing(false)
+      writeStoredPanelWidth(panelWidthRef.current)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onUp)
+    document.addEventListener('touchcancel', onUp)
+  }, [])
+
+  const resetWidth = useCallback(() => {
+    setPanelWidth(DEFAULT_PANEL_WIDTH)
+    writeStoredPanelWidth(DEFAULT_PANEL_WIDTH)
+  }, [])
+
+  const onHandleKeyDown = useCallback((e) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      // ArrowLeft = handle moves left = panel grows
+      setPanelWidth(w => {
+        const next = clampWidth(w + KEYBOARD_STEP)
+        writeStoredPanelWidth(next)
+        return next
+      })
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      setPanelWidth(w => {
+        const next = clampWidth(w - KEYBOARD_STEP)
+        writeStoredPanelWidth(next)
+        return next
+      })
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      resetWidth()
+    }
+  }, [resetWidth])
+
   return (
     <aside
       style={{
-        width: 'min(540px, 100%)',
+        position: 'relative',           // anchors the absolute drag handle
+        width: panelWidth,
         flexShrink: 0,
         background: 'var(--bg-card)',
         borderLeft: '1px solid var(--border)',
@@ -123,6 +237,13 @@ export default function RegionDetailPanel({
         overflow: 'hidden',
       }}
     >
+      <ResizeHandle
+        resizing={resizing}
+        ariaValue={panelWidth}
+        onPointerDown={beginResize}
+        onDoubleClick={resetWidth}
+        onKeyDown={onHandleKeyDown}
+      />
       {/* Header */}
       <header
         style={{
@@ -556,5 +677,54 @@ function SectionLabel({ title, count, subtitle }) {
         </span>
       )}
     </div>
+  )
+}
+
+// Vertical drag handle anchored to the panel's left edge.
+//
+// Visual: 6 px wide, transparent at rest, faint accent fill on hover or
+// while actively dragging. The hit-box extends slightly outward so users
+// don't have to be pixel-perfect to grab it.
+//
+// Accessibility: role="separator" + aria-orientation="vertical" lets
+// assistive tech announce it; ArrowLeft/Right keys nudge the width, Home
+// resets to the default (handlers live on the parent).
+function ResizeHandle({ resizing, ariaValue, onPointerDown, onDoubleClick, onKeyDown }) {
+  const [hover, setHover] = useState(false)
+  const active = resizing || hover
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="패널 너비 조절"
+      aria-valuenow={ariaValue}
+      aria-valuemin={MIN_PANEL_WIDTH}
+      tabIndex={0}
+      onMouseDown={onPointerDown}
+      onTouchStart={onPointerDown}
+      onDoubleClick={onDoubleClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onKeyDown={onKeyDown}
+      title="드래그하여 너비 조절 · 더블클릭하여 초기화"
+      style={{
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        // The visible strip is 6 px, but the hit area extends ~3 px out
+        // into the left view via a negative margin so the cursor doesn't
+        // have to be pixel-perfect.
+        width: 6,
+        marginLeft: -3,
+        paddingLeft: 3,
+        cursor: 'col-resize',
+        zIndex: 5,
+        background: active ? 'var(--accent)' : 'transparent',
+        opacity: active ? (resizing ? 1 : 0.55) : 1,
+        transition: resizing ? 'none' : 'background 0.12s, opacity 0.12s',
+        outline: 'none',
+      }}
+    />
   )
 }

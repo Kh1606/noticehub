@@ -1,0 +1,88 @@
+═══════════════════════════════════════════════════════════════════════════
+ ICONS NEEDED — 10 organizations need a manually-supplied logo
+═══════════════════════════════════════════════════════════════════════════
+
+The Phase A icon downloader (`python scripts/download_org_icons.py`) auto-
+fetched 66/76 org logos via Google's favicon service, direct /favicon.ico
+fallback, and HTML-head <link rel="icon"> parsing. These 10 sites blocked
+all three layers and currently show a colored first-letter circle in the
+UI (the placeholder fallback in src/components/OrgIcon.jsx).
+
+WORKFLOW
+  1. Open the page, save the logo as the exact filename listed below.
+  2. Drop it into  public/icons/<filename>.png  (overwriting the 67-byte
+     placeholder that lives there now).
+  3. Re-run:  python scripts/download_org_icons.py
+     The script sees the new real PNG (>100 bytes), moves the org's name
+     from MISSING_ICONS into ORG_ICON_MAP, and rewrites src/data/orgIcons.js.
+  4. Commit + push — main auto-deploys to GH Pages.
+
+You can do these one at a time. Filenames are stable across reruns.
+
+
+───────────────────────────────────────────────────────────────────────────
+ GROUP A — molit.go.kr subsites (6 orgs, ONE shared logo)
+───────────────────────────────────────────────────────────────────────────
+
+All six are regional offices of the Ministry of Land (국토교통부). Google
+can't index molit.go.kr (Korean IP block — same issue documented in
+clt+_qa_popup_report.md for the notice popups). The same ministry logo
+serves every one of them.
+
+LOGO SOURCE (open in browser, save the small ministry logo in the header):
+  https://www.molit.go.kr/USR/main/m_69/main.jsp
+
+Or the high-res symbol if available:
+  https://www.molit.go.kr/site/main/images/sub/symbol01.png
+
+SAVE THE SAME LOGO AS ALL SIX OF THESE FILENAMES:
+
+  public/icons/seo-uljibanggugtogwanlicheong.png        서울지방국토관리청
+  public/icons/busanjibanggugtogwanlicheong.png         부산지방국토관리청
+  public/icons/daejeonjibanggugtogwanlicheong.png       대전지방국토관리청
+  public/icons/wonjujibanggugtogwanlicheong.png         원주지방국토관리청
+  public/icons/igsanjibanggugtogwanlicheong.png         익산지방국토관리청
+  public/icons/su-won-gugtogwanlisamuso.png             수원 국토관리사무소
+
+
+───────────────────────────────────────────────────────────────────────────
+ GROUP B — site-specific (4 orgs, individual logos)
+───────────────────────────────────────────────────────────────────────────
+
+ORG:      고양시청 (Goyang City)
+LOGO AT:  https://www.goyang.go.kr/www/index.do
+          (header CI in the top-left of the page)
+SAVE AS:  public/icons/go-yangsicheong.png
+
+ORG:      광명시 (Gwangmyeong City)
+LOGO AT:  https://www.gm.go.kr
+          (header logo — the HTML head parser fetches this one
+           intermittently; manual is safer)
+SAVE AS:  public/icons/gwangmyeongsi.png
+
+ORG:      아산시 (Asan City)
+LOGO AT:  https://www.asan.go.kr/main/vy
+          (header logo)
+SAVE AS:  public/icons/asansi.png
+
+ORG:      제주도개발공사 (Jeju Province Development Corp.)
+LOGO AT:  https://www.jpdc.co.kr/index.htm
+          (their CI / 삼다수 mascot is in the page header)
+SAVE AS:  public/icons/jejudogaebalgongsa.png
+
+
+───────────────────────────────────────────────────────────────────────────
+ NOTES
+───────────────────────────────────────────────────────────────────────────
+
+* Required size: 64×64 px or larger; the UI scales them down to 12–14 px
+  for chips and 14 px for region cards.
+* Format: PNG with transparency preferred. JPG works too; SVG works if you
+  rename the extension to .png (browsers sniff bytes — Vite serves the
+  public/ folder raw without bundling).
+* If you can't find a clean logo, the deterministic colored letter circle
+  the UI shows now is a perfectly fine fallback — these orgs just won't
+  stand out visually next to the ones that have real logos.
+
+The auto-generated machine-readable version of this same list lives in
+scripts/_org_icon_misses.md — same content in Markdown.
