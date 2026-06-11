@@ -5,6 +5,7 @@ import NoticeList from './NoticeList.jsx'
 import NoticeDetailModal from './NoticeDetailModal.jsx'
 import useRegionInventory from './useRegionInventory.js'
 import { displayRegion } from '../lib/regionLabels.js'
+import OrgIcon from './OrgIcon.jsx'
 import {
   PERIODS,
   readStoredPeriod,
@@ -483,6 +484,7 @@ function OrgChip({ name, count, active, loading, onClick }) {
         }
       }}
     >
+      <OrgIcon name={name} size={14} />
       <span>{name}</span>
       <span
         style={{

@@ -18,6 +18,7 @@
 
 import { displayRegion } from '../../lib/regionLabels.js'
 import { formatRelative } from '../../lib/format.js'
+import OrgIcon from '../OrgIcon.jsx'
 
 export default function RegionCardV2({ r, heatColor, onPick }) {
   const top = r.byEntity.slice(0, 4)
@@ -151,15 +152,26 @@ export default function RegionCardV2({ r, heatColor, onPick }) {
                 padding: '3px 0 5px',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                 <span
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    minWidth: 0,
                     overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
                   }}
                 >
-                  {e.name}
+                  <OrgIcon name={e.name} size={14} />
+                  <span
+                    style={{
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {e.name}
+                  </span>
                 </span>
                 <span
                   style={{

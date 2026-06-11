@@ -13,6 +13,7 @@ import { Inbox } from 'lucide-react'
 import { supabase } from '../../lib/supabase.js'
 import { formatNoticeDate } from '../../lib/format.js'
 import { displayRegion } from '../../lib/regionLabels.js'
+import OrgIcon from '../OrgIcon.jsx'
 
 const LIMIT = 15
 
@@ -215,16 +216,20 @@ function RecentRow({ n, onOpenNotice, onPickOrg }) {
               }}
               title={`${n.sub_entity} 패널 열기`}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
                 fontSize: 10,
                 fontWeight: 700,
                 color: 'var(--accent)',
                 background: 'var(--accent-light)',
-                padding: '2px 7px',
+                padding: '2px 7px 2px 4px',
                 borderRadius: 999,
                 whiteSpace: 'nowrap',
                 cursor: 'pointer',
               }}
             >
+              <OrgIcon name={n.sub_entity} size={12} />
               {n.sub_entity}
             </span>
           )}

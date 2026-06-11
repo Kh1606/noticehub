@@ -17,6 +17,7 @@ import { PERIODS, cutoffDateFor, periodConfig } from '../../lib/periodFilter.js'
 import { highlight, splitTerms } from '../../lib/searchHighlight.jsx'
 import { formatNoticeDate } from '../../lib/format.js'
 import { displayRegion } from '../../lib/regionLabels.js'
+import OrgIcon from '../OrgIcon.jsx'
 
 // Mirrors NoticeList's behavior: AND across whitespace-split terms via
 // .ilike('title', '%t%'), debounce 250ms, limit 50.
@@ -388,17 +389,21 @@ function ResultCard({ n, terms, onOpenNotice, onPickOrg }) {
               }}
               title={`${n.sub_entity} 패널 열기`}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
                 fontSize: 10,
                 fontWeight: 700,
                 color: 'var(--text-secondary)',
                 background: 'var(--bg-page)',
                 border: '1px solid var(--border)',
-                padding: '2px 7px',
+                padding: '2px 7px 2px 4px',
                 borderRadius: 999,
                 whiteSpace: 'nowrap',
                 cursor: 'pointer',
               }}
             >
+              <OrgIcon name={n.sub_entity} size={12} />
               {n.sub_entity}
             </span>
           )}

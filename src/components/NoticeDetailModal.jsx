@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { X, ExternalLink, Paperclip, Download, FileText, Image as ImageIcon, FileArchive, AlertCircle, AlignLeft } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { formatDottedDate as formatDate } from '../lib/format.js'
+import OrgIcon from './OrgIcon.jsx'
 
 /**
  * Notice detail modal — opened when the user clicks a notice card.
@@ -140,7 +141,12 @@ export default function NoticeDetailModal({ notice, onClose }) {
               }}
             >
               <MetaChip color="accent">{notice.source_page}</MetaChip>
-              {notice.sub_entity && <MetaChip>{notice.sub_entity}</MetaChip>}
+              {notice.sub_entity && (
+                <MetaChip>
+                  <OrgIcon name={notice.sub_entity} size={14} style={{ marginRight: 5 }} />
+                  {notice.sub_entity}
+                </MetaChip>
+              )}
               {notice.region && <MetaChip>{notice.region}</MetaChip>}
               {postedStr && <MetaChip>{postedStr}</MetaChip>}
             </div>
@@ -350,6 +356,8 @@ function MetaChip({ children, color }) {
   return (
     <span
       style={{
+        display: 'inline-flex',
+        alignItems: 'center',
         fontSize: 11,
         fontWeight: 600,
         padding: '3px 9px',
