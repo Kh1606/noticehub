@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { X, ExternalLink, Paperclip, Download, FileText, Image as ImageIcon, FileArchive, AlertCircle, AlignLeft } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
+import { formatDottedDate as formatDate } from '../lib/format.js'
 
 /**
  * Notice detail modal — opened when the user clicks a notice card.
@@ -489,13 +490,6 @@ function extColor(ext) {
   if (['zip', '7z', 'tar', 'gz', 'rar'].includes(e)) return { bg: '#F3E8FF', fg: '#6B21A8' }
   if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(e)) return { bg: '#FEF3C7', fg: '#92400E' }
   return { bg: 'var(--bg-page, #F6F8FB)', fg: 'var(--text-secondary)' }
-}
-
-function formatDate(iso) {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (isNaN(d)) return iso
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
 }
 
 const primaryBtn = {
